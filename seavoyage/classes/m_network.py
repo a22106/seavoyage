@@ -1,5 +1,6 @@
 # MNetwork.py
 import geojson
+import networkx as nx
 from searoute import Marnet
 from searoute.utils import distance
 from shapely import LineString
@@ -260,6 +261,58 @@ class MNetwork(Marnet):
         for u, v, attrs in self.edges(data=True):
             linestrings.append(LineString([[u[0], u[1]], [v[0], v[1]]]))
         return linestrings
+    
+    @classmethod
+    def from_networkx(cls, graph: nx.Graph):
+        """
+        NetworkX 그래프를 MNetwork 객체로 변환합니다.
+        :param graph: NetworkX 그래프
+        :return: MNetwork 객체
+        """
+        mnetwork = cls()
+        # 모든 노드 추가
+        for node, attrs in graph.nodes(data=True):
+            # 노드가 (longitude, latitude) 형식의 튜플인지 확인
+            if isinstance(node, tuple) and len(node) >= 2:
+                mnetwork.add_node(node, **attrs)
+            else:
+                # 노드가 좌표 형식이 아닌 경우, x와 y 속성이 있는지 확인
+                if 'x' in attrs and 'y' in attrs:
+                    coords = (attrs['x'], attrs['y'])
+                    mnetwork.add_node(coords, **{k: v for k, v in attrs.items() if k not in ['x', 'y']})
+                else:
+                    print(f"노드 {node}를 건너뜁니다 - 좌표 정보가 없습니다.")
+        
+        # 모든 엣지 추가
+        for u, v, attrs in graph.edges(data=True):
+            # 원본 그래프에서 노드가 좌표 형식이 아닌 경우 처리
+            u_node = u
+            v_node = v
+            
+            if not isinstance(u, tuple) and u in graph:
+                attrs_u = graph.nodes[u]
+                if 'x' in attrs_u and 'y' in attrs_u:
+                    u_node = (attrs_u['x'], attrs_u['y'])
+            
+            if not isinstance(v, tuple) and v in graph:
+                attrs_v = graph.nodes[v]
+                if 'x' in attrs_v and 'y' in attrs_v:
+                    v_node = (attrs_v['x'], attrs_v['y'])
+            
+            # 두 노드가 모두 좌표 형식인 경우에만 엣지 추가
+            if isinstance(u_node, tuple) and isinstance(v_node, tuple):
+                mnetwork.add_edge(u_node, v_node, **attrs)
+            else:
+                print(f"엣지 {u}-{v}를 건너뜁니다 - 좌표 정보가 없습니다.")
+        
+        # 그래프 속성 복사
+        for key, value in graph.graph.items():
+            mnetwork.graph[key] = value
+        
+        # KDTree 업데이트
+        mnetwork.update_kdtree()
+        
+        return mnetwork
 
 
 if __name__ == "__main__":
