@@ -16,3 +16,6 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 MARNET_DIR = DATA_DIR / 'geojson/marnet'
 MARNET_DIR.mkdir(parents=True, exist_ok=True) 
+
+RESTRICTIONS_DIR = DATA_DIR / 'geojson/restrictions'
+RESTRICTIONS_DIR.mkdir(parents=True, exist_ok=True) 

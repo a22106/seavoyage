@@ -9,7 +9,7 @@ from searoute.data.marnet_dict import edge_list as marnet_e, node_list as marnet
 
 from seavoyage.classes.m_network import MNetwork
 from seavoyage.utils.geojson_utils import load_geojson
-from seavoyage.settings import MARNET_DIR
+from seavoyage.settings import MARNET_DIR, RESTRICTIONS_DIR
 
 def print_gpkg_layers(gpkg_file: str):
     layers = fiona.listlayers(gpkg_file)
@@ -59,6 +59,9 @@ def get_m_network_50km() -> MNetwork:
 def get_m_network_100km() -> MNetwork:
     """100km 간격의 확장된 MARNET 네트워크 반환"""
     return MNetwork().load_geojson(str(MARNET_DIR / 'marnet_plus_100km.geojson'))
+
+def get_restriction_path(file_name: str) -> str:
+    return str(RESTRICTIONS_DIR / file_name)
 
 def get_marnet_sample() -> MNetwork:
     return MNetwork().load_geojson('./data/samples/cross_land.geojson')
