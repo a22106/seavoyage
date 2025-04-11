@@ -2,7 +2,7 @@
 import geojson
 import networkx as nx
 from searoute import Marnet
-from searoute.utils import distance, load_from_geojson as sr_load_from_geojson
+from searoute.utils import distance
 from shapely import LineString
 from seavoyage.utils.shapely_utils import is_valid_edge
 import os
