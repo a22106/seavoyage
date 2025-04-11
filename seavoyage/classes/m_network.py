@@ -5,6 +5,7 @@ from searoute import Marnet
 from searoute.utils import distance, load_from_geojson as sr_load_from_geojson
 from shapely import LineString
 from seavoyage.utils.shapely_utils import is_valid_edge
+import os
 
 class MNetwork(Marnet):
     def __init__(self, *args, **kwargs):
@@ -263,41 +264,77 @@ class MNetwork(Marnet):
         return linestrings
     
     @classmethod
-    def from_geojson(cls, *path):
+    def from_geojson(cls, *args):
         """
-        GeoJSON 파일로부터 MNetwork 객체를 생성합니다.
+        GeoJSON 파일 경로 또는 GeoJSON 객체로부터 MNetwork 객체를 생성합니다.
         
         Parameters
         ----------
-        *path : 파일 경로
-            GeoJSON 파일의 경로
+        *args : 파일 경로 또는 GeoJSON 객체
+            - 문자열: GeoJSON 파일 경로로 해석됩니다.
+            - dict: GeoJSON 객체(사전)로 해석됩니다.
+            - geojson.GeoJSON: GeoJSON 객체로 해석됩니다.
             
         Returns
         -------
         MNetwork 객체
         """
         mnetwork = cls()
-        return mnetwork.load_from_geojson(*path)
+        return mnetwork.load_from_geojson(*args)
 
-    def load_from_geojson(self, *geojson_file):
+    def load_from_geojson(self, *args):
         """
-        GeoJSON 파일로부터 그래프를 로드합니다. 기존 searoute의 load_from_geojson에
-        Polygon 타입 지원을 추가했습니다.
+        GeoJSON 파일 경로 또는 GeoJSON 객체로부터 그래프를 로드합니다.
+        기존 searoute의 load_from_geojson에 Polygon 타입 지원을 추가했고,
+        GeoJSON 객체를 직접 입력받을 수 있습니다.
         
         Parameters
         ----------
-        *geojson_file : 파일 경로
-            GeoJSON 파일의 경로
+        *args : 파일 경로 또는 GeoJSON 객체
+            - 문자열: GeoJSON 파일 경로로 해석됩니다.
+            - dict: GeoJSON 객체(사전)로 해석됩니다.
+            - geojson.GeoJSON: GeoJSON 객체로 해석됩니다.
             
         Returns
         -------
         MNetwork 객체 (self)
         """
-        for gf in geojson_file:
-            with open(gf, 'r') as f:
-                data = geojson.load(f)
+        for arg in args:
+            # 파일 경로인 경우 파일에서 데이터를 로드
+            if isinstance(arg, str):
+                if not os.path.exists(arg):
+                    raise FileNotFoundError(f"GeoJSON 파일을 찾을 수 없습니다: {arg}")
+                with open(arg, 'r') as f:
+                    data = geojson.load(f)
+            # dict 또는 geojson 객체인 경우 직접 사용
+            elif isinstance(arg, (dict, geojson.base.GeoJSON)):
+                data = arg
+            else:
+                raise TypeError(f"지원하지 않는 인자 타입입니다: {type(arg)}. 문자열 경로 또는 GeoJSON 객체가 필요합니다.")
 
             def handle_geometry(geometry, properties):
+                # 문자열이나 dict 타입의 geometry를 geojson 객체로 변환
+                if isinstance(geometry, dict):
+                    geo_type = geometry.get('type')
+                    coords = geometry.get('coordinates')
+                    
+                    # dict 형태의 geometry를 적절한 geojson 타입으로 변환
+                    if geo_type == 'LineString':
+                        geometry = geojson.LineString(coords)
+                    elif geo_type == 'MultiLineString':
+                        geometry = geojson.MultiLineString(coords)
+                    elif geo_type == 'Point':
+                        geometry = geojson.Point(coords)
+                    elif geo_type == 'MultiPoint':
+                        geometry = geojson.MultiPoint(coords)
+                    elif geo_type == 'Polygon':
+                        geometry = geojson.Polygon(coords)
+                    elif geo_type == 'MultiPolygon':
+                        geometry = geojson.MultiPolygon(coords)
+                
+                if not hasattr(geometry, 'type'):
+                    raise ValueError(f"지오메트리에 'type' 속성이 없습니다: {geometry}")
+                
                 if geometry.type == 'LineString':
                     coords = geometry.coordinates
                     for u, v in zip(coords[:-1], coords[1:]):
@@ -345,15 +382,68 @@ class MNetwork(Marnet):
                     # 다른 타입의 지오메트리 처리 (필요한 경우)
                     print(f"지원하지 않는 지오메트리 타입: {geometry.type}")
 
-            # FeatureCollection에서 CRS 정보 추출
-            if data.type == 'FeatureCollection':
-                self.graph['crs'] = data.get('crs', {}).get(
-                    'properties', {}).get('name', None) or self.graph['crs']
-
-                for feature in data.features:
-                    handle_geometry(feature.geometry, feature.properties)
+            # FeatureCollection, Feature 또는 직접 Geometry 객체인지 확인
+            if hasattr(data, 'type'):
+                data_type = data.type
+            elif isinstance(data, dict) and 'type' in data:
+                data_type = data['type']
             else:
-                handle_geometry(data.geometry, data.properties)
+                raise ValueError("입력된 GeoJSON 데이터에 'type' 속성이 없습니다.")
+                
+            # FeatureCollection 처리
+            if data_type == 'FeatureCollection':
+                # CRS 정보 추출
+                if hasattr(data, 'crs'):
+                    crs = data.crs
+                elif isinstance(data, dict) and 'crs' in data:
+                    crs = data['crs']
+                else:
+                    crs = None
+                    
+                if crs:
+                    crs_name = None
+                    if isinstance(crs, dict) and 'properties' in crs:
+                        crs_name = crs['properties'].get('name')
+                    elif hasattr(crs, 'properties') and hasattr(crs.properties, 'name'):
+                        crs_name = crs.properties.name
+                        
+                    if crs_name:
+                        self.graph['crs'] = crs_name
+                
+                # Features 처리
+                features = data.features if hasattr(data, 'features') else data.get('features', [])
+                for feature in features:
+                    # 피처에서 geometry와 properties 추출
+                    if hasattr(feature, 'geometry') and hasattr(feature, 'properties'):
+                        geometry = feature.geometry
+                        properties = feature.properties
+                    elif isinstance(feature, dict):
+                        geometry = feature.get('geometry', {})
+                        properties = feature.get('properties', {})
+                    else:
+                        continue
+                        
+                    handle_geometry(geometry, properties)
+            # Feature 처리
+            elif data_type == 'Feature':
+                if hasattr(data, 'geometry') and hasattr(data, 'properties'):
+                    geometry = data.geometry
+                    properties = data.properties
+                elif isinstance(data, dict):
+                    geometry = data.get('geometry', {})
+                    properties = data.get('properties', {})
+                else:
+                    continue
+                    
+                handle_geometry(geometry, properties)
+            # 직접 지오메트리 객체 처리
+            else:
+                # 지오메트리 타입인 경우
+                geometry_types = ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon']
+                if data_type in geometry_types:
+                    handle_geometry(data, {})
+                else:
+                    print(f"지원하지 않는 GeoJSON 타입: {data_type}")
 
         # KDTree 업데이트
         self.update_kdtree()
