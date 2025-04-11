@@ -181,9 +181,8 @@ class RestrictedMarnet(MNetwork):
         # 커스텀 제한 구역 필터링
         for restriction in self.custom_restrictions.values():
             if restriction.polygon.intersects(line):
-                print(f"제한 구역과 교차: {restriction.name}, 좌표: {u}, {v}")
+                # print(f"제한 구역과 교차: {restriction.name}, 좌표: {u}, {v}")
                 return False
-                
         return True
         
     def shortest_path(self, origin, destination):
@@ -225,7 +224,7 @@ def register_custom_restriction(name: str, geojson_file_path: str):
     return restriction
 
 # 시작 시 jwc.geojson 파일이 존재하면 자동으로 등록
-register_custom_restriction("jwc", get_restriction_path("jwc.geojson"))
+# register_custom_restriction("jwc", get_restriction_path("jwc.geojson"))
 
 def get_custom_restriction(name: str):
     """

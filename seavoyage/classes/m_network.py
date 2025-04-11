@@ -2,7 +2,7 @@
 import geojson
 import networkx as nx
 from searoute import Marnet
-from searoute.utils import distance
+from searoute.utils import distance, load_from_geojson as sr_load_from_geojson
 from shapely import LineString
 from seavoyage.utils.shapely_utils import is_valid_edge
 
@@ -263,6 +263,103 @@ class MNetwork(Marnet):
         return linestrings
     
     @classmethod
+    def from_geojson(cls, *path):
+        """
+        GeoJSON 파일로부터 MNetwork 객체를 생성합니다.
+        
+        Parameters
+        ----------
+        *path : 파일 경로
+            GeoJSON 파일의 경로
+            
+        Returns
+        -------
+        MNetwork 객체
+        """
+        mnetwork = cls()
+        return mnetwork.load_from_geojson(*path)
+
+    def load_from_geojson(self, *geojson_file):
+        """
+        GeoJSON 파일로부터 그래프를 로드합니다. 기존 searoute의 load_from_geojson에
+        Polygon 타입 지원을 추가했습니다.
+        
+        Parameters
+        ----------
+        *geojson_file : 파일 경로
+            GeoJSON 파일의 경로
+            
+        Returns
+        -------
+        MNetwork 객체 (self)
+        """
+        for gf in geojson_file:
+            with open(gf, 'r') as f:
+                data = geojson.load(f)
+
+            def handle_geometry(geometry, properties):
+                if geometry.type == 'LineString':
+                    coords = geometry.coordinates
+                    for u, v in zip(coords[:-1], coords[1:]):
+                        self.add_edge(tuple(u), tuple(v), **properties)
+                        # 양방향 엣지 추가
+                        self.add_edge(tuple(v), tuple(u), **properties)
+                elif geometry.type == 'MultiLineString':
+                    for line_string in geometry.coordinates:
+                        for u, v in zip(line_string[:-1], line_string[1:]):
+                            self.add_edge(tuple(u), tuple(v), **properties)
+                            # 양방향 엣지 추가
+                            self.add_edge(tuple(v), tuple(u), **properties)
+                elif geometry.type == 'Point':
+                    coords = tuple(geometry.coordinates)
+                    self.add_node(coords, **properties)
+                elif geometry.type == 'MultiPoint':
+                    for point_coords in geometry.coordinates:
+                        coords = tuple(point_coords)
+                        self.add_node(coords, **properties)
+                elif geometry.type == 'Polygon':
+                    # 폴리곤 테두리를 LineString처럼 처리
+                    # 첫 번째 링(외부 링)만 처리
+                    outer_ring = geometry.coordinates[0]
+                    # 폴리곤의 각 점을 노드로 추가하고 인접한 점 사이에 엣지 생성
+                    for u, v in zip(outer_ring[:-1], outer_ring[1:]):  # 마지막 점은 첫 점과 같으므로 제외
+                        self.add_edge(tuple(u), tuple(v), **properties)
+                        # 양방향 엣지 추가
+                        self.add_edge(tuple(v), tuple(u), **properties)
+                    # 폴리곤 닫기 (마지막 점과 첫 점 연결) - 이미 GeoJSON에서 닫혀있을 수 있지만 안전하게 처리
+                    if outer_ring[0] != outer_ring[-1]:
+                        self.add_edge(tuple(outer_ring[-1]), tuple(outer_ring[0]), **properties)
+                        self.add_edge(tuple(outer_ring[0]), tuple(outer_ring[-1]), **properties)
+                elif geometry.type == 'MultiPolygon':
+                    # 각 폴리곤의 외부 링을 처리
+                    for polygon in geometry.coordinates:
+                        outer_ring = polygon[0]  # 첫 번째 링(외부 링)
+                        for u, v in zip(outer_ring[:-1], outer_ring[1:]):
+                            self.add_edge(tuple(u), tuple(v), **properties)
+                            self.add_edge(tuple(v), tuple(u), **properties)
+                        # 폴리곤 닫기
+                        if outer_ring[0] != outer_ring[-1]:
+                            self.add_edge(tuple(outer_ring[-1]), tuple(outer_ring[0]), **properties)
+                            self.add_edge(tuple(outer_ring[0]), tuple(outer_ring[-1]), **properties)
+                else:
+                    # 다른 타입의 지오메트리 처리 (필요한 경우)
+                    print(f"지원하지 않는 지오메트리 타입: {geometry.type}")
+
+            # FeatureCollection에서 CRS 정보 추출
+            if data.type == 'FeatureCollection':
+                self.graph['crs'] = data.get('crs', {}).get(
+                    'properties', {}).get('name', None) or self.graph['crs']
+
+                for feature in data.features:
+                    handle_geometry(feature.geometry, feature.properties)
+            else:
+                handle_geometry(data.geometry, data.properties)
+
+        # KDTree 업데이트
+        self.update_kdtree()
+        return self
+
+    @classmethod
     def from_networkx(cls, graph: nx.Graph):
         """
         NetworkX 그래프를 MNetwork 객체로 변환합니다.
@@ -313,6 +410,7 @@ class MNetwork(Marnet):
         mnetwork.update_kdtree()
         
         return mnetwork
+    
 
 
 if __name__ == "__main__":
