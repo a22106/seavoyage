@@ -1,8 +1,8 @@
 geojson==3.2.0
 networkx==3.4.2
 setuptools==75.8.0
-searoute==1.4.2
-folium==0.16.0
-shapely==2.0.7
+searoute==1.4.3
+folium==0.19.5
+shapely==2.1.0
 geopandas==1.0.1
 fiona==1.10.1
