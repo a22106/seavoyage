@@ -21,6 +21,8 @@ __all__ = (
         "get_marnet_sample",
         "get_additional_points",
         "create_geojson_from_marnet",
+        "get_restriction_path",
+        "get_mnet_path",
     ]
     # shapely_utils
     + [
