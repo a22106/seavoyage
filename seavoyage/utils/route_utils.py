@@ -63,6 +63,9 @@ def get_m_network_100km() -> MNetwork:
 def get_restriction_path(file_name: str) -> str:
     return str(RESTRICTIONS_DIR / file_name)
 
+def get_mnet_path(file_name: str) -> str:
+    return str(MARNET_DIR / file_name)
+
 def get_marnet_sample() -> MNetwork:
     return MNetwork().load_geojson('./data/samples/cross_land.geojson')
 

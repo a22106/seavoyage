@@ -4,12 +4,15 @@ import networkx as nx
 from searoute import Marnet
 from searoute.utils import distance
 from shapely import LineString
+from seavoyage.modules.restriction import CustomRestriction
 from seavoyage.utils.shapely_utils import is_valid_edge
 import os
 
 class MNetwork(Marnet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+                # 커스텀 제한 구역 저장 딕셔너리
+        self.custom_restrictions = {}
 
     def add_node_with_edges(self, node: tuple[float, float], threshold: float = 100.0, land_polygon = None):
         """
@@ -501,6 +504,70 @@ class MNetwork(Marnet):
         
         return mnetwork
     
+    def add_restriction(self, restriction: CustomRestriction):
+        """
+        커스텀 제한 구역 추가
+        
+        Args:
+            restriction: CustomRestriction 객체
+        """
+        self.custom_restrictions[restriction.name] = restriction
+        print(f"제한 구역 추가: {restriction.name}")
+        
+    def remove_restriction(self, name: str):
+        """
+        커스텀 제한 구역 제거
+        
+        Args:
+            name: 제한 구역 이름
+        """
+        if name in self.custom_restrictions:
+            del self.custom_restrictions[name]
+    
+    def _filter_custom_restricted_edge(self, u, v, data):
+        """커스텀 제한 구역과 교차하는 엣지 필터링"""
+        line = LineString([u, v])
+        
+        # 기존 제한 구역 필터링
+        if data.get('passage') in self.restrictions:
+            return False
+        
+        # 커스텀 제한 구역 필터링
+        for restriction in self.custom_restrictions.values():
+            if restriction.polygon.intersects(line):
+                # print(f"제한 구역과 교차: {restriction.name}, 좌표: {u}, {v}")
+                return False
+        return True
+        
+    def shortest_path(self, origin, destination, method = "astar") -> list:
+        """
+        제한 구역을 피해 출발지와 목적지 사이의 최단 경로 계산
+        
+        Args:
+            origin: 출발지 좌표 (경도, 위도)
+            destination: 목적지 좌표 (경도, 위도)
+            method: 경로 탐색 방법 (기본값: "dijkstra", "astar"도 가능)
+        Returns:
+            List: 최단 경로의 노드 리스트
+        """
+        if method not in ("dijkstra", "astar"):
+            raise ValueError("Method must be either 'dijkstra' or 'astar'.")
+        
+        origin_node = self.kdtree.query(origin)
+        destination_node = self.kdtree.query(destination)
+        
+        # 커스텀 제한 구역을 고려한 가중치 함수
+        def custom_weight(u, v, data):
+            if self._filter_custom_restricted_edge(u, v, data):
+                return data.get('weight', 1.0)
+            else:
+                return float('inf')
+        
+        if method == "dijkstra":
+            result = nx.shortest_path(self, origin_node, destination_node, weight=custom_weight)
+        elif method == "astar":
+            result = nx.astar_path(self, origin_node, destination_node, weight=custom_weight)
+        return result
 
 
 if __name__ == "__main__":
