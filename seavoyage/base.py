@@ -6,6 +6,8 @@ from seavoyage.utils import get_m_network_20km
 from seavoyage.modules.restriction import get_custom_restriction, list_custom_restrictions
 from seavoyage.classes.m_network import MNetwork
 
+_SINGLETON_MNETWORK = get_m_network_20km()
+
 # 원본 seavoyage 함수
 def _original_seavoyage(start: tuple[float, float], end: tuple[float, float], **kwargs):
     """
@@ -36,7 +38,7 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], restrictions
         geojson.FeatureCollection(dict): 경로 정보
     """
     # 기본 해양 네트워크 또는 parameter로 전달된 MNetwork네트워크 사용
-    mnetwork: MNetwork = kwargs.pop("M", get_m_network_20km())
+    mnetwork: MNetwork = kwargs.pop("M", _SINGLETON_MNETWORK)
     
     # 기본 passage 제한 구역 설정 (searoute.classes.passages.Passage 클래스의 상수들)
     default_passages = []
