@@ -1,13 +1,14 @@
 import networkx as nx
+import os
 from searoute import searoute
 from searoute.classes.passages import Passage
 from seavoyage.log import logger
 
-from seavoyage.utils import get_m_network_20km
-from seavoyage.modules.restriction import get_custom_restriction, list_custom_restrictions
+from seavoyage.utils import get_m_network_20km, _get_mnet_path
+from seavoyage.modules.restriction import CustomRestriction, get_custom_restriction, list_custom_restrictions
 from seavoyage.classes.m_network import MNetwork
 
-_DEFAULT_MNETWORK = get_m_network_20km()
+_DEFAULT_MNETWORK = MNetwork().load_geojson(_get_mnet_path('10km_modified.geojson')) if os.path.exists(_get_mnet_path('10km_modified.geojson')) else get_m_network_20km()
 
 # 원본 seavoyage 함수
 def _original_seavoyage(start: tuple[float, float], end: tuple[float, float], **kwargs):
@@ -46,10 +47,12 @@ def _classify_restrictions(restrictions):
     return custom, default, unknown
 
 
-def _apply_restrictions_to_network(mnetwork, custom_restrictions, default_passages):
+def _apply_restrictions_to_network(mnetwork: MNetwork, custom_restrictions:list[CustomRestriction], default_passages:list[Passage]):
     """
     네트워크 객체에 제한 구역을 적용
     """
+    if not isinstance(mnetwork, MNetwork):
+        raise ValueError(f"mnetwork must be an instance of MNetwork, not {type(mnetwork)}: {mnetwork}")
     mnetwork.restrictions = default_passages
     for restriction in custom_restrictions:
         mnetwork.add_restriction(restriction)
