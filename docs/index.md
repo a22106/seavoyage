@@ -2,6 +2,12 @@
 
 seavoyage는 해상 네트워크 기반의 선박 경로 탐색, 커스텀 제한구역(해역) 적용, 네트워크 시각화 등 다양한 해양 경로 분석 기능을 제공하는 Python 패키지입니다. 이 패키지는 [searoute](https://github.com/genthalili/searoute-py) 패키지를 기반으로 개선되었습니다.
 
+```{toctree}
+:maxdepth: 2
+:caption: 목차
+
+10minutes.md
+```
 
 ## 주요 기능
 - 해상 네트워크 기반 최적 경로 탐색
