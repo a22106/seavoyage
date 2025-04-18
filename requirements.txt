@@ -1,6 +1,5 @@
 geojson==3.2.0
 networkx==3.4.2
-setuptools==75.8.0
 searoute==1.4.3
 folium==0.19.5
 shapely==2.1.0
