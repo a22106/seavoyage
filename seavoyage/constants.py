@@ -1,4 +1,5 @@
 from enum import Enum
+from seavoyage.log import logger
 
 class UnitEnum(Enum):
     KM = "km"
@@ -36,5 +37,5 @@ class AvoidPassageEnum(Enum):
     
     
 if __name__ == "__main__":
-    print(UnitEnum.values_list())
-    print(AvoidPassageEnum.values_list())
+    logger.info(UnitEnum.values_list())
+    logger.info(AvoidPassageEnum.values_list())

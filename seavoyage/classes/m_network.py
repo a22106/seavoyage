@@ -1,12 +1,14 @@
 # MNetwork.py
+import os
 import geojson
 import networkx as nx
+from shapely import LineString
+
 from searoute import Marnet
 from searoute.utils import distance
-from shapely import LineString
 from seavoyage.modules.restriction import CustomRestriction
 from seavoyage.utils.shapely_utils import is_valid_edge
-import os
+from seavoyage.log import logger
 
 class MNetwork(Marnet):
     def __init__(self, *args, **kwargs):
@@ -90,7 +92,7 @@ class MNetwork(Marnet):
                     self.add_edge(node, other_node, weight=dist)
                     all_created_edges.append((node, other_node, dist))
                     
-        print(f"Added {len(all_created_edges)} edges")
+        logger.info(f"Added {len(all_created_edges)} edges")
         return all_created_edges
 
     def _extract_point_coordinates(self, point: geojson.Point):
@@ -239,7 +241,7 @@ class MNetwork(Marnet):
                 self.add_edge(node1, node2, **edge_attrs)
                 all_created_edges.append((node1, node2, weight))
         
-        print(f"총 {len(all_created_edges)}개의 엣지가 추가되었습니다.")
+        logger.info(f"Total {len(all_created_edges)} edges added")
         return all_created_edges
     
     def to_geojson(self, file_path: str = None) -> geojson.FeatureCollection:
@@ -383,7 +385,7 @@ class MNetwork(Marnet):
                             self.add_edge(tuple(outer_ring[0]), tuple(outer_ring[-1]), **properties)
                 else:
                     # 다른 타입의 지오메트리 처리 (필요한 경우)
-                    print(f"지원하지 않는 지오메트리 타입: {geometry.type}")
+                    logger.info(f"Not supported geometry type: {geometry.type}")
 
             # FeatureCollection, Feature 또는 직접 Geometry 객체인지 확인
             if hasattr(data, 'type'):
@@ -446,7 +448,7 @@ class MNetwork(Marnet):
                 if data_type in geometry_types:
                     handle_geometry(data, {})
                 else:
-                    print(f"지원하지 않는 GeoJSON 타입: {data_type}")
+                    logger.info(f"지원하지 않는 GeoJSON 타입: {data_type}")
 
         # KDTree 업데이트
         self.update_kdtree()
@@ -471,7 +473,7 @@ class MNetwork(Marnet):
                     coords = (attrs['x'], attrs['y'])
                     mnetwork.add_node(coords, **{k: v for k, v in attrs.items() if k not in ['x', 'y']})
                 else:
-                    print(f"노드 {node}를 건너뜁니다 - 좌표 정보가 없습니다.")
+                    logger.info(f"Skipping node {node} - no coordinate information")
         
         # 모든 엣지 추가
         for u, v, attrs in graph.edges(data=True):
@@ -493,7 +495,7 @@ class MNetwork(Marnet):
             if isinstance(u_node, tuple) and isinstance(v_node, tuple):
                 mnetwork.add_edge(u_node, v_node, **attrs)
             else:
-                print(f"엣지 {u}-{v}를 건너뜁니다 - 좌표 정보가 없습니다.")
+                logger.info(f"Skipping edge {u}-{v} - no coordinate information")
         
         # 그래프 속성 복사
         for key, value in graph.graph.items():
@@ -512,7 +514,7 @@ class MNetwork(Marnet):
             restriction: CustomRestriction 객체
         """
         self.custom_restrictions[restriction.name] = restriction
-        print(f"제한 구역 추가: {restriction.name}")
+        logger.info(f"Restriction added: {restriction.name}")
         
     def remove_restriction(self, name: str):
         """
@@ -535,7 +537,7 @@ class MNetwork(Marnet):
         # 커스텀 제한 구역 필터링
         for restriction in self.custom_restrictions.values():
             if restriction.polygon.intersects(line):
-                # print(f"제한 구역과 교차: {restriction.name}, 좌표: {u}, {v}")
+                # logger.debug(f"제한 구역과 교차: {restriction.name}, 좌표: {u}, {v}")
                 return False
         return True
         
@@ -578,7 +580,7 @@ if __name__ == "__main__":
     # 단일 노드 추가 및 엣지 자동 생성
     new_node = (129.165, 35.070)
     created_edges = marnet.add_node_with_edges(new_node, threshold=100.0)
-    print(created_edges)
+    logger.info(created_edges)
 
     # 여러 노드 추가 및 엣지 자동 생성
     new_nodes = [
@@ -587,6 +589,6 @@ if __name__ == "__main__":
         (129.175, 35.070)
     ]
     all_created_edges = marnet.add_nodes_with_edges(new_nodes, threshold=100.0)
-    print(all_created_edges)
+    logger.info(all_created_edges)
     
     marnet.print_graph_info()

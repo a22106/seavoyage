@@ -21,9 +21,16 @@ dependencies = [
     "shapely==2.1.0",
     "geopandas==1.0.1",
     "fiona==1.10.1",
-    "setuptools==75.8.0"
+    "setuptools==75.8.0",
+    "pytest==7.4.3"
 ]
 
 [project.urls]
 Homepage = "https://github.com/a22106/seavoyage"
 
+[tool.pytest.ini_options]
+python_files = ["test_*.py", "*_test.py"]
+testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+]

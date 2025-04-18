@@ -1,6 +1,7 @@
 import networkx as nx
 from searoute import searoute
 from searoute.classes.passages import Passage
+from seavoyage.log import logger
 
 from seavoyage.utils import get_m_network_20km
 from seavoyage.modules.restriction import get_custom_restriction, list_custom_restrictions
@@ -24,6 +25,36 @@ def _original_seavoyage(start: tuple[float, float], end: tuple[float, float], **
         kwargs["M"] = get_m_network_20km()
     return searoute(start, end, **kwargs)
 
+def _classify_restrictions(restrictions):
+    """
+    제한 구역 이름 리스트를 커스텀/기본/알 수 없음으로 분류
+    """
+    custom = []
+    default = []
+    unknown = []
+    for r in restrictions:
+        custom_restriction = get_custom_restriction(r)
+        if custom_restriction:
+            logger.info(f"커스텀 제한 구역 '{r}' 발견")
+            custom.append(custom_restriction)
+        elif hasattr(Passage, r):
+            logger.info(f"기본 제한 구역 '{r}' 발견")
+            default.append(getattr(Passage, r))
+        else:
+            logger.warning(f"알 수 없는 제한 구역: '{r}'")
+            unknown.append(r)
+    return custom, default, unknown
+
+
+def _apply_restrictions_to_network(mnetwork, custom_restrictions, default_passages):
+    """
+    네트워크 객체에 제한 구역을 적용
+    """
+    mnetwork.restrictions = default_passages
+    for restriction in custom_restrictions:
+        mnetwork.add_restriction(restriction)
+
+
 def seavoyage(start: tuple[float, float], end: tuple[float, float], restrictions=None, **kwargs):
     """
     선박 경로 계산 (커스텀 제한 구역 지원)
@@ -37,45 +68,37 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], restrictions
     Returns:
         geojson.FeatureCollection(dict): 경로 정보
     """
-    # 기본 해양 네트워크 또는 parameter로 전달된 MNetwork네트워크 사용
     mnetwork: MNetwork = kwargs.pop("M", _DEFAULT_MNETWORK)
-    
-    # 기본 passage 제한 구역 설정 (searoute.classes.passages.Passage 클래스의 상수들)
-    default_passages = []
-    custom_restrictions = []
-    
+
+    if start == end:
+        # 동일한 포인트 입력 시, 길이 0의 경로 반환
+        return {
+            "geometry": {
+                "coordinates": [list(start)],
+                "type": "LineString"
+            },
+            "properties": {
+                "duration_hours": 0.0,
+                "length": 0.0,
+                "units": "km"
+            },
+            "type": "Feature"
+        }
+
+    custom_restrictions, default_passages, unknown_restrictions = [], [], []
     if restrictions:
-        print(f"요청된 제한 구역: {restrictions}")
-        for r in restrictions:
-            # 커스텀 제한 구역인지 확인
-            custom_restriction = get_custom_restriction(r)
-            if custom_restriction:
-                print(f"커스텀 제한 구역 '{r}' 발견")
-                custom_restrictions.append(custom_restriction)
-            else:
-                # 기본 passages 중 하나인지 확인
-                if hasattr(Passage, r):
-                    print(f"기본 제한 구역 '{r}' 발견")
-                    default_passages.append(getattr(Passage, r))
-                else:
-                    print(f"알 수 없는 제한 구역: '{r}'")
-    
-    # 기본 제한 구역 설정
-    mnetwork.restrictions = default_passages
-    
-    # 커스텀 제한 구역 추가
-    for restriction in custom_restrictions:
-        mnetwork.add_restriction(restriction)
-    
-    # 디버깅용 - 등록된 모든 제한 구역 출력
-    print(f"등록된 제한 구역: {list_custom_restrictions()}")
-    
+        logger.info(f"요청된 제한 구역: {restrictions}")
+        custom_restrictions, default_passages, unknown_restrictions = _classify_restrictions(restrictions)
+
+    _apply_restrictions_to_network(mnetwork, custom_restrictions, default_passages)
+
+    logger.debug(f"등록된 제한 구역: {list_custom_restrictions()}")
+
     if "jwc" in list_custom_restrictions():
         jwc = get_custom_restriction("jwc")
         if jwc:
-            print(f"JWC 제한구역: {jwc.name}, Bounds: {jwc.polygon.bounds}")
-    
-    # searoute 호출
+            logger.info(f"JWC 제한구역: {jwc.name}, Bounds: {jwc.polygon.bounds}")
+
     kwargs["M"] = mnetwork
     return _original_seavoyage(start, end, **kwargs)
 

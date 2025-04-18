@@ -1,6 +1,6 @@
 # Sea Voyage
 
-Sea Voyage는 지구상의 두 지점 간 최단 해상 경로를 계산하는 Python 패키지입니다. 이 패키지는 [searoute](https://github.com/genthalili/searoute-py) 패키지를 기반으로 개선되었습니다.
+seavoyage는 해상 네트워크 기반의 선박 경로 탐색, 커스텀 제한구역(해역) 적용, 네트워크 시각화 등 다양한 해양 경로 분석 기능을 제공하는 Python 패키지입니다. 이 패키지는 [searoute](https://github.com/genthalili/searoute-py) 패키지를 기반으로 개선되었습니다.
 
 ## 원본 프로젝트
 - 원본 패키지: [searoute](https://github.com/genthalili/searoute-py)
@@ -32,7 +32,7 @@ origin = [0.3515625, 50.064191736659104]
 destination = [117.42187500000001, 39.36827914916014]
 
 # 경로 계산
-route = sv.voyage(origin, destination)
+route = sv.seavoyage(origin, destination)
 
 # 거리 및 단위 출력
 print("{:.1f} {}".format(route.properties['length'], route.properties['units'])) # 
@@ -46,7 +46,7 @@ import seavoyage as sv
 m_network = sv.get_m_network_5km()
 
 # 경로 계산
-route = sv.voyage(origin, destination, M=m_network)
+route = sv.seavoyage(origin, destination, M=m_network)
 
 # 거리 및 단위 출력
 print("{:.1f} {}".format(route.properties['length'], route.properties['units']))
