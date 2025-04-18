@@ -2,3 +2,28 @@
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "seavoyage"
+version = "0.1.6"
+description = "An improved version of searoute package for calculating the shortest sea route between two points on Earth."
+readme = "README.md"
+authors = [
+    { name = "Byeonggong Hwang", email = "bk22106@gmail.com" }
+]
+license = { file = "LICENSE" }
+keywords = ["sea route", "shortest path", "graph", "geojson", "networkx", "seavoyage"]
+requires-python = ">=3.11"
+dependencies = [
+    "geojson==3.2.0",
+    "networkx==3.4.2",
+    "searoute==1.4.3",
+    "folium==0.19.5",
+    "shapely==2.1.0",
+    "geopandas==1.0.1",
+    "fiona==1.10.1",
+    "setuptools==75.8.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/a22106/seavoyage"
+
