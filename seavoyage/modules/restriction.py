@@ -2,6 +2,8 @@ import os
 import json
 from shapely.geometry import Polygon, MultiPolygon
 
+from seavoyage.log import logger
+
 # 전역 제한 구역 저장소
 _CUSTOM_RESTRICTION_REGISTRY = {}
 
@@ -102,7 +104,7 @@ def register_custom_restriction(name: str, geojson_file_path: str):
     """
     restriction = CustomRestriction.from_geojson_file(name, geojson_file_path)
     _CUSTOM_RESTRICTION_REGISTRY[name] = restriction
-    print(f"제한 구역 등록 성공: {name}, 파일: {geojson_file_path}")
+    logger.info(f"제한 구역 등록 성공: {name}, 파일: {geojson_file_path}")
     return restriction
 
 def get_custom_restriction(name: str):

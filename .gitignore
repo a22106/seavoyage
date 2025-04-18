@@ -1,6 +1,7 @@
 data/shorelines/
 practice/*
 !practice/*.ipynb
+.vscode/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

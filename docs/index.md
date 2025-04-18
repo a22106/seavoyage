@@ -2,10 +2,6 @@
 
 seavoyage는 해상 네트워크 기반의 선박 경로 탐색, 커스텀 제한구역(해역) 적용, 네트워크 시각화 등 다양한 해양 경로 분석 기능을 제공하는 Python 패키지입니다. 이 패키지는 [searoute](https://github.com/genthalili/searoute-py) 패키지를 기반으로 개선되었습니다.
 
-## 원본 프로젝트
-- 원본 패키지: [searoute](https://github.com/genthalili/searoute-py)
-- 원작자: Gent Halili
-- 라이선스: Apache License 2.0
 
 ## 주요 기능
 - 해상 네트워크 기반 최적 경로 탐색
@@ -82,30 +78,3 @@ m.save("route_map.html")
 : 제한구역 객체 반환
 - `map_folium(data, ...)`
 : folium 기반 지도 시각화
-
-## 라이선스
-이 프로젝트는 Apache License 2.0 라이선스 하에 배포됩니다.
-
-```
-Copyright 2024 - Gent Halili (원작자)
-Copyright 2025 - Byeonggong Hwang
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
-
-## 기여
-버그 리포트, 기능 제안, 풀 리퀘스트는 언제나 환영합니다.
-
-## 연락처
-- 이메일: bk22106@gmail.com
-- GitHub: [a22106](https://github.com/a22106)
