@@ -5,5 +5,9 @@ folium>=0.19.5
 shapely>=2.1.0
 geopandas>=1.0.1
 fiona>=1.10.1
-myst-parser
-sphinx_rtd_theme
+scikit-learn>=1.6.1
+scipy>=1.15.2
+
+# Read the docs
+myst-parser>=4.0.0
+sphinx_rtd_theme>=3.0.2
