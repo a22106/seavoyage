@@ -3,6 +3,8 @@ import pytest
 from seavoyage.classes.m_network import MNetwork
 from seavoyage.utils.marine_network import _get_mnet_path
 import os
+import numpy as np
+from shapely.geometry import Polygon, LineString
 
 class TestMnetwork:
     def test_init_mnetwork(self):
@@ -126,3 +128,125 @@ def test_to_line_string():
     mnet.add_node_with_edges(node, threshold=100.0)
     lines = mnet.to_line_string()
     assert isinstance(lines, list)
+
+# add_node_and_connect 메소드 테스트 추가
+def test_add_node_and_connect_empty_network():
+    """빈 네트워크에 노드 추가 테스트"""
+    mnet = MNetwork()
+    new_node = (126.5, 35.5)
+    edges = mnet.add_node_and_connect(new_node)
+    
+    # 노드가 하나뿐이므로 엣지가 생성되지 않아야 함
+    assert isinstance(edges, list)
+    assert len(edges) == 0
+    assert new_node in mnet.nodes
+    assert len(mnet.nodes) == 1
+
+def test_add_node_and_connect_with_existing_nodes():
+    """기존 노드가 있는 네트워크에 노드 추가 테스트"""
+    mnet = MNetwork()
+    
+    # 기존 노드 몇 개 추가
+    existing_nodes = [
+        (126.0, 35.0),
+        (126.1, 35.1),
+        (126.2, 35.2),
+        (126.3, 35.3),
+        (126.4, 35.4)
+    ]
+    for node in existing_nodes:
+        mnet.add_node(node)
+    
+    # 새 노드 추가 및 연결
+    new_node = (126.5, 35.5)
+    edges = mnet.add_node_and_connect(new_node, k=3, land_polygon=None)
+    
+    # 검증
+    assert isinstance(edges, list)
+    assert len(edges) > 0
+    assert new_node in mnet.nodes
+    assert len(mnet.nodes) == 6  # 기존 5개 + 새 노드 1개
+    
+    # 모든 엣지가 새 노드를 포함하는지 확인
+    for edge in edges:
+        assert new_node in (edge[0], edge[1])
+        
+    # k=3으로 설정했으므로 KNN에서 적어도 3개의 엣지가 생성되어야 함
+    # (Delaunay에서 추가 엣지가 생성될 수 있음)
+    assert len(edges) >= 3
+
+def test_add_node_and_connect_params():
+    """다양한 k 값으로 add_node_and_connect 테스트"""
+    # 여러 k 값에 대해 테스트
+    for k in [1, 3, 5, 10]:
+        mnet = MNetwork()
+        
+        # 기존 노드 12개 추가 (k값보다 많게)
+        existing_nodes = [(126.0 + i*0.1, 35.0 + i*0.1) for i in range(12)]
+        for node in existing_nodes:
+            mnet.add_node(node)
+        
+        # 새 노드 추가
+        new_node = (127.0, 36.0)
+        edges = mnet.add_node_and_connect(new_node, k=k, land_polygon=None)
+        
+        # KNN에서 생성되는 엣지 수는 k 이하여야 함 (노드 수가 충분한 경우 정확히 k개)
+        # Delaunay에서 추가 엣지가 생성될 수 있음
+        assert len(edges) >= min(k, len(existing_nodes))
+
+def test_add_node_and_connect_returns_edge_format():
+    """엣지 포맷 검증 테스트"""
+    mnet = MNetwork()
+    
+    # 기존 노드 추가
+    existing_nodes = [
+        (126.0, 35.0),
+        (126.1, 35.1),
+        (126.2, 35.2)
+    ]
+    for node in existing_nodes:
+        mnet.add_node(node)
+    
+    # 새 노드 추가
+    new_node = (126.5, 35.5)
+    edges = mnet.add_node_and_connect(new_node)
+    
+    # 엣지 형식 검증: (node1, node2, weight)
+    for edge in edges:
+        assert len(edge) == 3
+        assert isinstance(edge[0], tuple) and len(edge[0]) == 2
+        assert isinstance(edge[1], tuple) and len(edge[1]) == 2
+        assert isinstance(edge[2], float)
+        
+        # weight는 거리(km)이므로 양수여야 함
+        assert edge[2] > 0
+
+def test_add_node_and_connect_kdtree_update():
+    """KDTree 업데이트 테스트"""
+    mnet = MNetwork()
+    
+    # 기존 노드 추가
+    existing_nodes = [
+        (126.0, 35.0),
+        (126.1, 35.1),
+        (126.2, 35.2)
+    ]
+    for node in existing_nodes:
+        mnet.add_node(node)
+    
+    # KDTree 업데이트
+    mnet.update_kdtree()
+    
+    # 새 노드 추가 전에 가장 가까운 노드 찾기
+    new_node = (126.5, 35.5)
+    closest_before = mnet.kdtree.query(new_node)
+    
+    # 새 노드 추가
+    mnet.add_node_and_connect(new_node)
+    
+    # 새 노드가 추가된 후 가장 가까운 노드 찾기
+    closest_after = mnet.kdtree.query(new_node)
+    
+    # KDTree가 업데이트되었으므로 새 노드 자신이 가장 가까운 노드여야 함
+    assert closest_after == new_node
+    assert closest_before != closest_after

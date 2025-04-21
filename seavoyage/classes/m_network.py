@@ -2,19 +2,30 @@
 import os
 import geojson
 import networkx as nx
+import numpy as np
 from shapely import LineString
+from sklearn.neighbors import NearestNeighbors
+from scipy.spatial import Delaunay
+from typing import Optional
 
 from searoute import Marnet
 from searoute.utils import distance
 from seavoyage.modules.restriction import CustomRestriction
 from seavoyage.utils.shapely_utils import is_valid_edge
 from seavoyage.log import logger
+from seavoyage.exceptions import (
+    UnreachableDestinationError, 
+    StartInRestrictionError, 
+    DestinationInRestrictionError,
+    IsolatedOriginError
+)
+from seavoyage.utils.shoreline import shoreline
 
 class MNetwork(Marnet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-                # 커스텀 제한 구역 저장 딕셔너리
-        self.custom_restrictions = {}
+        # 커스텀 제한 구역 저장 딕셔너리
+        self.custom_restrictions: dict[str, CustomRestriction] = {}
 
     def add_node_with_edges(self, node: tuple[float, float], threshold: float = 100.0, land_polygon = None):
         """
@@ -55,6 +66,73 @@ class MNetwork(Marnet):
                 self.add_edge(node, existing_node, weight=dist)
                 created_edges.append((node, existing_node, dist))
                 
+        return created_edges
+
+    def add_node_and_connect(self, new_node: tuple[float, float], k: int = 5, land_polygon = shoreline):
+        """
+        기존 MNetwork 객체에 신규 노드를 추가한 뒤,
+        해당 노드에 대해서만 기존 노드들과 KNN, Delaunay Triangulation 기반 엣지를 생성합니다.
+
+        :param new_node: (lon, lat) 튜플
+        :param k: KNN에서 연결할 이웃 수
+        :param land_polygon: 육지 폴리곤 (선택사항)
+        :return: 생성된 엣지 리스트 [(node1, node2, 거리), ...]
+        """
+        # 신규 노드 추가
+        self.add_node(new_node)
+
+        # 생성된 엣지들을 저장할 리스트
+        created_edges = []
+        
+        # 1. KNN 엣지 생성
+        coords = np.array(list(self.nodes))
+        if len(coords) <= 1:
+            logger.info("노드가 1개뿐이므로 엣지 생성 없음")
+            return []
+
+        # KNN: 신규 노드 기준으로만
+        nbrs = NearestNeighbors(n_neighbors=min(k+1, len(coords)), algorithm='ball_tree').fit(coords)
+        distances, indices = nbrs.kneighbors([new_node])
+        
+        for idx, dist in zip(indices[0][1:], distances[0][1:]):  # 첫 번째는 자기 자신
+            neighbor = tuple(coords[idx])
+            line = LineString([new_node, neighbor])
+            if land_polygon is not None and not is_valid_edge(line, land_polygon):
+                continue
+            weight = float(distance(new_node, neighbor, units="km"))
+            self.add_edge(new_node, neighbor, weight=weight)
+            created_edges.append((new_node, neighbor, weight))
+
+        # 2. Delaunay: 기존 노드 + 신규 노드로 삼각분할, 신규 노드가 포함된 edge만 추가
+        if len(coords) >= 3:
+            coords_with_new = np.vstack([coords, new_node])
+            try:
+                tri = Delaunay(coords_with_new)
+                idx_new = len(coords_with_new) - 1
+                for simplex in tri.simplices:
+                    if idx_new in simplex:
+                        for i in range(3):
+                            for j in range(i+1, 3):
+                                idx_i, idx_j = simplex[i], simplex[j]
+                                if idx_new in (idx_i, idx_j):
+                                    node_i = tuple(coords_with_new[idx_i])
+                                    node_j = tuple(coords_with_new[idx_j])
+                                    if self.has_edge(node_i, node_j):
+                                        continue
+                                    line = LineString([node_i, node_j])
+                                    if land_polygon is not None and not is_valid_edge(line, land_polygon):
+                                        continue
+                                    weight = float(distance(node_i, node_j, units="km"))
+                                    self.add_edge(node_i, node_j, weight=weight)
+                                    created_edges.append((node_i, node_j, weight))
+            except Exception as e:
+                logger.error(f"Delaunay 삼각분할 중 오류 발생: {e}")
+        
+        logger.info(f"신규 노드에 대해 KNN+Delaunay 엣지 생성 완료: {len(created_edges)}개")
+        
+        # KDTree 업데이트
+        self.update_kdtree()
+        
         return created_edges
 
     def add_nodes_with_edges(self, nodes: list[tuple[float, float]], threshold: float = 100.0, land_polygon = None):
@@ -528,19 +606,53 @@ class MNetwork(Marnet):
     
     def _filter_custom_restricted_edge(self, u, v, data):
         """커스텀 제한 구역과 교차하는 엣지 필터링"""
+        # 간선을 LineString으로 변환
         line = LineString([u, v])
         
-        # 기존 제한 구역 필터링
-        if data.get('passage') in self.restrictions:
-            return False
+        # 기존 제한 구역 필터링 
+        restrictions_passed = data.get('passage')
+        logger.debug(f"엣지 {u} -> {v}의 passage 정보: {restrictions_passed}")
+        
+        if isinstance(restrictions_passed, str):
+            # 단일 passage인 경우
+            if restrictions_passed in self.restrictions:
+                logger.debug(f"엣지 {u} -> {v}가 기본 제한 구역 '{restrictions_passed}'와 교차")
+                return False
+        elif isinstance(restrictions_passed, list):
+            # 여러 passage가 있는 경우, 하나라도 제한 구역에 해당하면 필터링
+            for passage in restrictions_passed:
+                if passage in self.restrictions:
+                    logger.debug(f"엣지 {u} -> {v}가 기본 제한 구역 '{passage}'와 교차")
+                    return False
         
         # 커스텀 제한 구역 필터링
-        for restriction in self.custom_restrictions.values():
-            if restriction.polygon.intersects(line):
-                # logger.debug(f"제한 구역과 교차: {restriction.name}, 좌표: {u}, {v}")
+        for name, restriction in self.custom_restrictions.items():
+            # 선분이 제한 구역과 교차하거나 완전히 포함되는 경우
+            if restriction.polygon.intersects(line) or restriction.polygon.contains(line):
+                logger.debug(f"엣지 {u} -> {v}가 커스텀 제한 구역 '{name}'과 교차 또는 포함")
                 return False
+                
+        # 모든 제한 구역을 통과하지 않는 경우
+        logger.debug(f"엣지 {u} -> {v}는 모든 제한 구역을 통과하지 않음")
         return True
+    
+    def is_point_in_restriction(self, point: tuple) -> tuple[bool, Optional[str]]:
+        """
+        주어진 점이 제한 구역 내에 있는지 확인합니다.
         
+        Args:
+            point: (경도, 위도) 좌표
+            
+        Returns:
+            tuple[bool, Optional[str]]: (점이 제한 구역 내에 있으면 True, 제한 구역 이름) 또는 (False, None)
+        """
+        # 명시적으로 custom_restrictions의 타입을 지정
+        restrictions: dict[str, CustomRestriction] = self.custom_restrictions
+        for name, restriction in restrictions.items():
+            if restriction.contains_point(point):
+                return True, name
+        return False, None
+    
     def shortest_path(self, origin, destination, method = "astar") -> list:
         """
         제한 구역을 피해 출발지와 목적지 사이의 최단 경로 계산
@@ -551,25 +663,96 @@ class MNetwork(Marnet):
             method: 경로 탐색 방법 (기본값: "dijkstra", "astar"도 가능)
         Returns:
             List: 최단 경로의 노드 리스트
+            
+        Raises:
+            ValueError: 알고리즘이 'dijkstra'나 'astar'가 아닌 경우
+            UnreachableDestinationError: 제한 구역으로 인해 목적지에 도달할 수 없는 경우
+            StartInRestrictionError: 출발지가 제한 구역 내에 있는 경우
+            DestinationInRestrictionError: 목적지가 제한 구역 내에 있는 경우
+            IsolatedOriginError: 출발지가 제한 구역에 의해 고립되어 있는 경우
         """
+        # 디버깅 로그 추가
+        logger.info(f"시작 좌표: {origin}, 목적지 좌표: {destination}")
+        logger.info(f"현재 적용된 기본 제한 구역: {self.restrictions}")
+        logger.info(f"현재 적용된 커스텀 제한 구역: {list(self.custom_restrictions.keys())}")
+        
+        # 출발점이 제한구역에 있는지 확인
+        is_origin_restricted, origin_restriction = self.is_point_in_restriction(origin)
+        if is_origin_restricted:
+            logger.info(f"출발점 {origin}이 제한 구역 '{origin_restriction}' 내에 있습니다")
+            raise StartInRestrictionError(origin, origin_restriction)
+            
+        # 도착점이 제한구역에 있는지 확인
+        is_dest_restricted, dest_restriction = self.is_point_in_restriction(destination)
+        if is_dest_restricted:
+            logger.info(f"도착점 {destination}이 제한 구역 '{dest_restriction}' 내에 있습니다")
+            raise DestinationInRestrictionError(destination, dest_restriction)
+        
         if method not in ("dijkstra", "astar"):
             raise ValueError("Method must be either 'dijkstra' or 'astar'.")
         
+        # KDTree에서 가장 가까운 노드 찾기
         origin_node = self.kdtree.query(origin)
         destination_node = self.kdtree.query(destination)
         
+        # 출발점과 KDTree로 찾은 노드 사이의 선분이 제한 구역을 통과하는지 확인
+        if origin != origin_node:  # 출발점과 네트워크 노드가 다른 경우
+            line_to_origin = LineString([origin, origin_node])
+            logger.info(f"출발점 {origin}에서 가장 가까운 네트워크 노드: {origin_node}")
+            
+            # 커스텀 제한 구역 확인
+            for name, restriction in self.custom_restrictions.items():
+                if restriction.polygon.intersects(line_to_origin):
+                    logger.info(f"출발점 {origin}에서 가장 가까운 노드 {origin_node}까지의 경로가 제한 구역 '{name}'와 교차합니다")
+                    raise IsolatedOriginError(origin, [name])
+        
+        # 이웃 노드 수 로깅
+        neighbors = list(self.neighbors(origin_node))
+        logger.info(f"출발점 노드 {origin_node}의 이웃 노드 수: {len(neighbors)}")
+        
         # 커스텀 제한 구역을 고려한 가중치 함수
         def custom_weight(u, v, data):
-            if self._filter_custom_restricted_edge(u, v, data):
-                return data.get('weight', 1.0)
+            is_valid = self._filter_custom_restricted_edge(u, v, data)
+            if is_valid:
+                weight = distance(u, v)
+                return data.get('weight', weight)
             else:
                 return float('inf')
         
-        if method == "dijkstra":
-            result = nx.shortest_path(self, origin_node, destination_node, weight=custom_weight)
-        elif method == "astar":
-            result = nx.astar_path(self, origin_node, destination_node, weight=custom_weight)
-        return result
+        # 출발지 노드가 고립되었는지 확인
+        is_isolated = True
+        logger.info(f"출발점 노드 {origin_node}의 고립 여부 검사 시작")
+        
+        for neighbor in neighbors:
+            edge_data = self.get_edge_data(origin_node, neighbor)
+            is_valid_edge = self._filter_custom_restricted_edge(origin_node, neighbor, edge_data)
+            logger.info(f"  - 이웃 노드 {neighbor}: 유효한 경로 = {is_valid_edge}")
+            
+            if is_valid_edge:
+                is_isolated = False
+                break
+        
+        if is_isolated:
+            logger.info(f"출발점 {origin}이 제한 구역에 의해 고립되어 있습니다")
+            restriction_names = list(self.custom_restrictions.keys())
+            if self.restrictions:
+                restriction_names.extend([str(r) for r in self.restrictions])
+            raise IsolatedOriginError(origin, restriction_names)
+        
+        try:
+            if method == "dijkstra":
+                result = nx.shortest_path(self, origin_node, destination_node, weight=custom_weight)
+            elif method == "astar":
+                result = nx.astar_path(self, origin_node, destination_node, weight=custom_weight)
+            logger.info(f"경로 탐색 성공: {len(result)} 노드")
+            return result
+        except nx.NetworkXNoPath:
+            # NetworkX에서 경로를 찾지 못한 경우
+            logger.info(f"경로를 찾을 수 없습니다: {origin} -> {destination}")
+            restriction_names = list(self.custom_restrictions.keys())
+            if self.restrictions:
+                restriction_names.extend([str(r) for r in self.restrictions])
+            raise UnreachableDestinationError(origin, destination, restriction_names)
 
 
 if __name__ == "__main__":

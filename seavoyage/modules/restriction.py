@@ -1,6 +1,7 @@
 import os
 import json
-from shapely.geometry import Polygon, MultiPolygon
+from typing import Optional
+from shapely.geometry import Polygon, MultiPolygon, Point
 
 from seavoyage.log import logger
 
@@ -24,6 +25,21 @@ class CustomRestriction:
             self.polygon = polygon
         else:
             raise TypeError("polygon은 Shapely Polygon 또는 MultiPolygon 타입이어야 합니다.")
+    
+    def contains_point(self, point: tuple) -> bool:
+        """
+        주어진 점이 제한 구역 내에 있는지 확인합니다.
+        
+        Args:
+            point: (경도, 위도) 좌표
+            
+        Returns:
+            bool: 점이 제한 구역 내에 있으면 True, 아니면 False
+        """
+        # 좌표를 Point 객체로 변환
+        shapely_point = Point(point)
+        # 폴리곤에 포함되는지 확인
+        return self.polygon.contains(shapely_point)
         
     @classmethod
     def from_geojson(cls, name: str, geojson_data: dict) -> 'CustomRestriction':
@@ -107,7 +123,7 @@ def register_custom_restriction(name: str, geojson_file_path: str):
     logger.info(f"제한 구역 등록 성공: {name}, 파일: {geojson_file_path}")
     return restriction
 
-def get_custom_restriction(name: str):
+def get_custom_restriction(name: str) -> Optional[CustomRestriction]:
     """
     이름으로 등록된 커스텀 제한 구역을 가져옵니다.
     
@@ -127,3 +143,10 @@ def list_custom_restrictions():
         List[str]: 등록된 제한 구역 이름 목록
     """
     return list(_CUSTOM_RESTRICTION_REGISTRY.keys())
+
+def reset_custom_restrictions():
+    """
+    모든 커스텀 제한 구역을 초기화합니다.
+    """
+    _CUSTOM_RESTRICTION_REGISTRY.clear()
+
