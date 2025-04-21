@@ -12,7 +12,6 @@ from .marine_network import (
     _get_mnet_path,  # 내부적으로 사용되는 네트워크 경로 반환 함수
     get_marnet_sample,  # 샘플 네트워크 반환
 )
-from .restriction import _get_restriction_path
 from .route_utils import *
 from .shapely_utils import *
 
@@ -34,8 +33,6 @@ __all__ = (
         "_get_mnet_path",
         "get_marnet_sample",
     ]
-    # restriction
-    + ["_get_restriction_path"]
     # route_utils
     + [
         "make_searoute_nodes",

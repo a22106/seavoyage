@@ -6,6 +6,7 @@ import numpy as np
 from shapely import LineString
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial import Delaunay
+from typing import Optional
 
 from searoute import Marnet
 from searoute.utils import distance
@@ -16,8 +17,8 @@ from seavoyage.log import logger
 class MNetwork(Marnet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-                # 커스텀 제한 구역 저장 딕셔너리
-        self.custom_restrictions = {}
+        # 커스텀 제한 구역 저장 딕셔너리
+        self.custom_restrictions: dict[str, CustomRestriction] = {}
 
     def add_node_with_edges(self, node: tuple[float, float], threshold: float = 100.0, land_polygon = None):
         """
@@ -598,19 +599,48 @@ class MNetwork(Marnet):
     
     def _filter_custom_restricted_edge(self, u, v, data):
         """커스텀 제한 구역과 교차하는 엣지 필터링"""
+        # 간선을 LineString으로 변환
         line = LineString([u, v])
         
-        # 기존 제한 구역 필터링
-        if data.get('passage') in self.restrictions:
-            return False
+        # 기존 제한 구역 필터링 
+        restrictions_passed = data.get('passage')
+        if isinstance(restrictions_passed, str):
+            # 단일 passage인 경우
+            if restrictions_passed in self.restrictions:
+                return False
+        elif isinstance(restrictions_passed, list):
+            # 여러 passage가 있는 경우, 하나라도 제한 구역에 해당하면 필터링
+            for passage in restrictions_passed:
+                if passage in self.restrictions:
+                    return False
         
         # 커스텀 제한 구역 필터링
         for restriction in self.custom_restrictions.values():
-            if restriction.polygon.intersects(line):
-                # logger.debug(f"제한 구역과 교차: {restriction.name}, 좌표: {u}, {v}")
+            # 선분이 제한 구역과 교차하거나 완전히 포함되는 경우
+            if restriction.polygon.intersects(line) or restriction.polygon.contains(line):
+                logger.debug(f"제한 구역과 교차 또는 포함: {restriction.name}, 좌표: {u} -> {v}")
                 return False
+                
+        # 모든 제한 구역을 통과하지 않는 경우
         return True
+    
+    def is_point_in_restriction(self, point: tuple) -> tuple[bool, Optional[str]]:
+        """
+        주어진 점이 제한 구역 내에 있는지 확인합니다.
         
+        Args:
+            point: (경도, 위도) 좌표
+            
+        Returns:
+            tuple[bool, Optional[str]]: (점이 제한 구역 내에 있으면 True, 제한 구역 이름) 또는 (False, None)
+        """
+        # 명시적으로 custom_restrictions의 타입을 지정
+        restrictions: dict[str, CustomRestriction] = self.custom_restrictions
+        for name, restriction in restrictions.items():
+            if restriction.contains_point(point):
+                return True, name
+        return False, None
+    
     def shortest_path(self, origin, destination, method = "astar") -> list:
         """
         제한 구역을 피해 출발지와 목적지 사이의 최단 경로 계산
@@ -621,7 +651,30 @@ class MNetwork(Marnet):
             method: 경로 탐색 방법 (기본값: "dijkstra", "astar"도 가능)
         Returns:
             List: 최단 경로의 노드 리스트
+            
+        Raises:
+            ValueError: 알고리즘이 'dijkstra'나 'astar'가 아닌 경우
+            UnreachableDestinationError: 제한 구역으로 인해 목적지에 도달할 수 없는 경우
+            StartInRestrictionError: 출발지가 제한 구역 내에 있는 경우
+            DestinationInRestrictionError: 목적지가 제한 구역 내에 있는 경우
+            IsolatedOriginError: 출발지가 제한 구역에 의해 고립되어 있는 경우
         """
+        from seavoyage.exceptions import (
+            UnreachableDestinationError, 
+            StartInRestrictionError, 
+            DestinationInRestrictionError
+        )
+        
+        # 출발점이 제한구역에 있는지 확인
+        is_origin_restricted, origin_restriction = self.is_point_in_restriction(origin)
+        if is_origin_restricted:
+            raise StartInRestrictionError(origin, origin_restriction)
+            
+        # 도착점이 제한구역에 있는지 확인
+        is_dest_restricted, dest_restriction = self.is_point_in_restriction(destination)
+        if is_dest_restricted:
+            raise DestinationInRestrictionError(destination, dest_restriction)
+        
         if method not in ("dijkstra", "astar"):
             raise ValueError("Method must be either 'dijkstra' or 'astar'.")
         
@@ -631,15 +684,21 @@ class MNetwork(Marnet):
         # 커스텀 제한 구역을 고려한 가중치 함수
         def custom_weight(u, v, data):
             if self._filter_custom_restricted_edge(u, v, data):
-                return data.get('weight', 1.0)
+                weight = distance(u, v)
+                return data.get('weight', weight)
             else:
                 return float('inf')
         
-        if method == "dijkstra":
-            result = nx.shortest_path(self, origin_node, destination_node, weight=custom_weight)
-        elif method == "astar":
-            result = nx.astar_path(self, origin_node, destination_node, weight=custom_weight)
-        return result
+        try:
+            if method == "dijkstra":
+                result = nx.shortest_path(self, origin_node, destination_node, weight=custom_weight)
+            elif method == "astar":
+                result = nx.astar_path(self, origin_node, destination_node, weight=custom_weight)
+            return result
+        except nx.NetworkXNoPath:
+            # NetworkX에서 경로를 찾지 못한 경우
+            restriction_names = list(self.custom_restrictions.keys())
+            raise UnreachableDestinationError(origin, destination, restriction_names)
 
 
 if __name__ == "__main__":
