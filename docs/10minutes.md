@@ -40,6 +40,13 @@ mnet = sv.MNetwork().from_geojson('/path/to/mnet.geojson')
 route = sv.seavoyage(start, end, M=mnet)
 ```
 
+### 3.3. 해상 네트워크에 node 추가
+```python
+# 해상 네트워크에 node 추가 및 edge 자동 연결결
+mnet = sv.MNetwork().from_geojson('/path/to/mnet.geojson')
+mnet.add_node_and_connect((129.17, 35.075), k=3)
+```
+
 ## 4. folium 기반 지도 시각화
 ```python
 from seavoyage.utils import map_folium
