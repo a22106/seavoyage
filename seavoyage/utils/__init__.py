@@ -11,9 +11,12 @@ from .marine_network import (
     get_m_network_100km,  # 100km 간격 네트워크 반환
     _get_mnet_path,  # 내부적으로 사용되는 네트워크 경로 반환 함수
     get_marnet_sample,  # 샘플 네트워크 반환
+    add_node_and_connect
 )
 from .route_utils import *
 from .shapely_utils import *
+from .shoreline import *
+
 
 __all__ = (
     # geojson_utils
@@ -32,6 +35,7 @@ __all__ = (
         "get_m_network_100km",
         "_get_mnet_path",
         "get_marnet_sample",
+        "add_node_and_connect"
     ]
     # route_utils
     + [
@@ -47,5 +51,10 @@ __all__ = (
         "is_valid_edge",
         "remove_edges_cross_land",
         "load_land_polygon",
+    ]
+    # shoreline
+    + [
+        "ShorelineLevel",
+        "shoreline",
     ]
 )

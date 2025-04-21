@@ -19,6 +19,7 @@ from seavoyage.exceptions import (
     DestinationInRestrictionError,
     IsolatedOriginError
 )
+from seavoyage.utils.shoreline import shoreline
 
 class MNetwork(Marnet):
     def __init__(self, *args, **kwargs):
@@ -67,7 +68,7 @@ class MNetwork(Marnet):
                 
         return created_edges
 
-    def add_edges_for_new_node_knn_delaunay(self, new_node: tuple[float, float], k: int = 5, land_polygon = None):
+    def add_node_and_connect(self, new_node: tuple[float, float], k: int = 5, land_polygon = shoreline):
         """
         기존 MNetwork 객체에 신규 노드를 추가한 뒤,
         해당 노드에 대해서만 기존 노드들과 KNN, Delaunay Triangulation 기반 엣지를 생성합니다.
@@ -82,7 +83,7 @@ class MNetwork(Marnet):
 
         # 생성된 엣지들을 저장할 리스트
         created_edges = []
-
+        
         # 1. KNN 엣지 생성
         coords = np.array(list(self.nodes))
         if len(coords) <= 1:
