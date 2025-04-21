@@ -13,6 +13,12 @@ from searoute.utils import distance
 from seavoyage.modules.restriction import CustomRestriction
 from seavoyage.utils.shapely_utils import is_valid_edge
 from seavoyage.log import logger
+from seavoyage.exceptions import (
+    UnreachableDestinationError, 
+    StartInRestrictionError, 
+    DestinationInRestrictionError,
+    IsolatedOriginError
+)
 
 class MNetwork(Marnet):
     def __init__(self, *args, **kwargs):
@@ -604,24 +610,29 @@ class MNetwork(Marnet):
         
         # 기존 제한 구역 필터링 
         restrictions_passed = data.get('passage')
+        logger.debug(f"엣지 {u} -> {v}의 passage 정보: {restrictions_passed}")
+        
         if isinstance(restrictions_passed, str):
             # 단일 passage인 경우
             if restrictions_passed in self.restrictions:
+                logger.debug(f"엣지 {u} -> {v}가 기본 제한 구역 '{restrictions_passed}'와 교차")
                 return False
         elif isinstance(restrictions_passed, list):
             # 여러 passage가 있는 경우, 하나라도 제한 구역에 해당하면 필터링
             for passage in restrictions_passed:
                 if passage in self.restrictions:
+                    logger.debug(f"엣지 {u} -> {v}가 기본 제한 구역 '{passage}'와 교차")
                     return False
         
         # 커스텀 제한 구역 필터링
-        for restriction in self.custom_restrictions.values():
+        for name, restriction in self.custom_restrictions.items():
             # 선분이 제한 구역과 교차하거나 완전히 포함되는 경우
             if restriction.polygon.intersects(line) or restriction.polygon.contains(line):
-                logger.debug(f"제한 구역과 교차 또는 포함: {restriction.name}, 좌표: {u} -> {v}")
+                logger.debug(f"엣지 {u} -> {v}가 커스텀 제한 구역 '{name}'과 교차 또는 포함")
                 return False
                 
         # 모든 제한 구역을 통과하지 않는 경우
+        logger.debug(f"엣지 {u} -> {v}는 모든 제한 구역을 통과하지 않음")
         return True
     
     def is_point_in_restriction(self, point: tuple) -> tuple[bool, Optional[str]]:
@@ -659,45 +670,87 @@ class MNetwork(Marnet):
             DestinationInRestrictionError: 목적지가 제한 구역 내에 있는 경우
             IsolatedOriginError: 출발지가 제한 구역에 의해 고립되어 있는 경우
         """
-        from seavoyage.exceptions import (
-            UnreachableDestinationError, 
-            StartInRestrictionError, 
-            DestinationInRestrictionError
-        )
+        # 디버깅 로그 추가
+        logger.info(f"시작 좌표: {origin}, 목적지 좌표: {destination}")
+        logger.info(f"현재 적용된 기본 제한 구역: {self.restrictions}")
+        logger.info(f"현재 적용된 커스텀 제한 구역: {list(self.custom_restrictions.keys())}")
         
         # 출발점이 제한구역에 있는지 확인
         is_origin_restricted, origin_restriction = self.is_point_in_restriction(origin)
         if is_origin_restricted:
+            logger.info(f"출발점 {origin}이 제한 구역 '{origin_restriction}' 내에 있습니다")
             raise StartInRestrictionError(origin, origin_restriction)
             
         # 도착점이 제한구역에 있는지 확인
         is_dest_restricted, dest_restriction = self.is_point_in_restriction(destination)
         if is_dest_restricted:
+            logger.info(f"도착점 {destination}이 제한 구역 '{dest_restriction}' 내에 있습니다")
             raise DestinationInRestrictionError(destination, dest_restriction)
         
         if method not in ("dijkstra", "astar"):
             raise ValueError("Method must be either 'dijkstra' or 'astar'.")
         
+        # KDTree에서 가장 가까운 노드 찾기
         origin_node = self.kdtree.query(origin)
         destination_node = self.kdtree.query(destination)
         
+        # 출발점과 KDTree로 찾은 노드 사이의 선분이 제한 구역을 통과하는지 확인
+        if origin != origin_node:  # 출발점과 네트워크 노드가 다른 경우
+            line_to_origin = LineString([origin, origin_node])
+            logger.info(f"출발점 {origin}에서 가장 가까운 네트워크 노드: {origin_node}")
+            
+            # 커스텀 제한 구역 확인
+            for name, restriction in self.custom_restrictions.items():
+                if restriction.polygon.intersects(line_to_origin):
+                    logger.info(f"출발점 {origin}에서 가장 가까운 노드 {origin_node}까지의 경로가 제한 구역 '{name}'와 교차합니다")
+                    raise IsolatedOriginError(origin, [name])
+        
+        # 이웃 노드 수 로깅
+        neighbors = list(self.neighbors(origin_node))
+        logger.info(f"출발점 노드 {origin_node}의 이웃 노드 수: {len(neighbors)}")
+        
         # 커스텀 제한 구역을 고려한 가중치 함수
         def custom_weight(u, v, data):
-            if self._filter_custom_restricted_edge(u, v, data):
+            is_valid = self._filter_custom_restricted_edge(u, v, data)
+            if is_valid:
                 weight = distance(u, v)
                 return data.get('weight', weight)
             else:
                 return float('inf')
+        
+        # 출발지 노드가 고립되었는지 확인
+        is_isolated = True
+        logger.info(f"출발점 노드 {origin_node}의 고립 여부 검사 시작")
+        
+        for neighbor in neighbors:
+            edge_data = self.get_edge_data(origin_node, neighbor)
+            is_valid_edge = self._filter_custom_restricted_edge(origin_node, neighbor, edge_data)
+            logger.info(f"  - 이웃 노드 {neighbor}: 유효한 경로 = {is_valid_edge}")
+            
+            if is_valid_edge:
+                is_isolated = False
+                break
+        
+        if is_isolated:
+            logger.info(f"출발점 {origin}이 제한 구역에 의해 고립되어 있습니다")
+            restriction_names = list(self.custom_restrictions.keys())
+            if self.restrictions:
+                restriction_names.extend([str(r) for r in self.restrictions])
+            raise IsolatedOriginError(origin, restriction_names)
         
         try:
             if method == "dijkstra":
                 result = nx.shortest_path(self, origin_node, destination_node, weight=custom_weight)
             elif method == "astar":
                 result = nx.astar_path(self, origin_node, destination_node, weight=custom_weight)
+            logger.info(f"경로 탐색 성공: {len(result)} 노드")
             return result
         except nx.NetworkXNoPath:
             # NetworkX에서 경로를 찾지 못한 경우
+            logger.info(f"경로를 찾을 수 없습니다: {origin} -> {destination}")
             restriction_names = list(self.custom_restrictions.keys())
+            if self.restrictions:
+                restriction_names.extend([str(r) for r in self.restrictions])
             raise UnreachableDestinationError(origin, destination, restriction_names)
 
 

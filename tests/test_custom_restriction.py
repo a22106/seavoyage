@@ -2,6 +2,11 @@ import pytest
 import seavoyage as sv
 from seavoyage.modules.restriction import CustomRestriction
 import os
+import json
+import tempfile
+from shapely.geometry import Point, mapping
+from shapely.geometry.polygon import Polygon
+from seavoyage.exceptions import StartInRestrictionError, DestinationInRestrictionError, IsolatedOriginError
 
 @pytest.fixture
 def start_point():
@@ -14,11 +19,47 @@ def end_point():
 @pytest.fixture
 def jwc_geojson_path():
     # 실제 경로는 settings.py의 RESTRICTIONS_DIR 기준
-    return os.path.join(sv.RESTRICTIONS_DIR, 'jwc.geojson')
+    return os.path.join('notebooks/restrictions', 'jwc.geojson')
 
 @pytest.fixture
 def hra_geojson_path():
-    return os.path.join(sv.RESTRICTIONS_DIR, 'hra.geojson')
+    return os.path.join('notebooks/restrictions', 'hra.geojson')
+
+@pytest.fixture
+def restricted_destination():
+    # 제한구역 내부의 목적지 좌표 (jwc 제한구역 내부)
+    return (57.0, 24.828)
+
+@pytest.fixture
+def create_isolation_ring():
+    """출발점 주변에 고립된 영역을 만드는 fixture"""
+    def _create_isolation_ring(origin):
+        # 출발점 주변에 원 형태의 제한구역 생성
+        center = Point(origin)
+        buffer_distance = 0.5  # 반경 0.5도
+        circle = center.buffer(buffer_distance)
+        # 출발점 자체는 제외 (구멍)
+        point_buffer = center.buffer(0.05)  # 작은 반경
+        ring = Polygon(circle.exterior.coords, [point_buffer.exterior.coords])
+        
+        # GeoJSON으로 변환
+        geo_json = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature", 
+                "properties": {}, 
+                "geometry": mapping(ring)
+            }]
+        }
+        
+        # 임시 파일에 저장
+        with tempfile.NamedTemporaryFile(suffix='.geojson', delete=False, mode='w') as temp:
+            json.dump(geo_json, temp)
+            temp_path = temp.name
+            
+        return temp_path
+    
+    return _create_isolation_ring
 
 class TestCustomRestriction:
     def test_register_and_get_custom_restriction(self, jwc_geojson_path):
@@ -54,4 +95,66 @@ class TestCustomRestriction:
         # 테스트 시작 시 제한구역이 없다고 가정
         names = sv.list_custom_restrictions()
         # 제한구역이 없거나, 이전 테스트 영향이 있을 수 있음
-        assert isinstance(names, list), '반환값은 리스트여야 합니다.' 
+        assert isinstance(names, list), '반환값은 리스트여야 합니다.'
+        
+    def test_destination_in_restriction(self, start_point, restricted_destination, jwc_geojson_path):
+        """목적지가 제한구역 내부에 있는 경우 테스트"""
+        sv.register_custom_restriction('jwc', jwc_geojson_path)
+        
+        with pytest.raises(DestinationInRestrictionError) as excinfo:
+            sv.seavoyage(
+                start_point,
+                restricted_destination,
+                restrictions=['jwc']
+            )
+        
+        # 예외 메시지 검증
+        assert "목적지" in str(excinfo.value)
+        assert "제한 구역" in str(excinfo.value)
+        
+    def test_start_in_restriction(self, restricted_destination, end_point, jwc_geojson_path):
+        """출발지가 제한구역 내부에 있는 경우 테스트"""
+        sv.register_custom_restriction('jwc', jwc_geojson_path)
+        
+        with pytest.raises(StartInRestrictionError) as excinfo:
+            sv.seavoyage(
+                restricted_destination,  # 출발지로 제한구역 내부 좌표 사용
+                end_point,
+                restrictions=['jwc']
+            )
+        
+        # 예외 메시지 검증
+        assert "출발지" in str(excinfo.value)
+        assert "제한 구역" in str(excinfo.value)
+        
+    def test_isolated_origin(self, create_isolation_ring):
+        """고립된 출발점 테스트"""
+        # 출발점과 도착점 정의
+        origin = (30.0, 30.0)
+        destination = (35.0, 35.0)
+        
+        # 출발점 주변을 고립시키는 제한구역 생성
+        temp_path = create_isolation_ring(origin)
+        
+        try:
+            # 제한구역 등록
+            sv.register_custom_restriction('test_isolation', temp_path)
+            
+            # 예외가 발생해야 함
+            with pytest.raises(IsolatedOriginError) as excinfo:
+                sv.seavoyage(
+                    origin,
+                    destination,
+                    restrictions=['test_isolation']
+                )
+            
+            # 예외 메시지 검증
+            assert "출발지" in str(excinfo.value)
+            assert "고립" in str(excinfo.value)
+        
+        finally:
+            # 임시 파일 삭제
+            try:
+                os.unlink(temp_path)
+            except:
+                pass 
