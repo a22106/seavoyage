@@ -53,7 +53,12 @@ setup(
     python_requires=">=3.11",
     install_requires=requirements,
     package_data={
-        'seavoyage': ['data/geojson/marnet/*'],
+        'seavoyage': [
+            'data/geojson/marnet/*',
+            'data/shorelines/**/*',
+            'data/samples/*',
+            'data/ports/*',
+        ],
     },
     include_package_data=True,
 )
