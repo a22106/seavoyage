@@ -2,6 +2,9 @@
 경로 탐색 관련 예외 클래스 정의
 """
 
+from seavoyage.utils.coordinates import decdeg_to_degmin
+
+
 class RouteError(Exception):
     """경로 탐색 관련 기본 예외 클래스"""
     pass
@@ -43,7 +46,7 @@ class DestinationInRestrictionError(RouteError):
         self.restriction_name = restriction_name
         
         if not message:
-            message = f"목적지 {end}가 제한 구역 '{restriction_name}' 내에 있습니다."
+            message = f"목적지 {decdeg_to_degmin(end)}가 제한 구역 '{restriction_name}' 내에 있습니다."
             
         super().__init__(message)
 
@@ -61,7 +64,7 @@ class StartInRestrictionError(RouteError):
         self.restriction_name = restriction_name
         
         if not message:
-            message = f"출발지 {start}가 제한 구역 '{restriction_name}' 내에 있습니다."
+            message = f"출발지 {decdeg_to_degmin(start)}가 제한 구역 '{restriction_name}' 내에 있습니다."
             
         super().__init__(message) 
 

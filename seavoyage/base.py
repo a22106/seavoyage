@@ -8,6 +8,7 @@ from seavoyage.exceptions import RouteError, UnreachableDestinationError, StartI
 from seavoyage.utils import get_m_network_20km, _get_mnet_path
 from seavoyage.modules.restriction import CustomRestriction, get_custom_restriction, list_custom_restrictions
 from seavoyage.classes.m_network import MNetwork
+from seavoyage.utils.coordinates import decdeg_to_degmin
 
 _DEFAULT_MNETWORK = MNetwork().load_geojson(_get_mnet_path('10km_modified.geojson')) if os.path.exists(_get_mnet_path('10km_modified.geojson')) else get_m_network_20km()
 
@@ -117,13 +118,13 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], restrictions
         # 출발점이 제한 구역 내에 있는지 확인
         is_origin_restricted, origin_restriction = mnetwork.is_point_in_restriction(start)
         if is_origin_restricted:
-            logger.error(f"출발점 {start}이 제한 구역 '{origin_restriction}' 내에 있습니다")
+            logger.error(f"출발점 {decdeg_to_degmin(start)}이 제한 구역 '{origin_restriction}' 내에 있습니다")
             raise StartInRestrictionError(start, origin_restriction)
             
         # 도착점이 제한 구역 내에 있는지 확인
         is_dest_restricted, dest_restriction = mnetwork.is_point_in_restriction(end)
         if is_dest_restricted:
-            logger.error(f"도착점 {end}이 제한 구역 '{dest_restriction}' 내에 있습니다")
+            logger.error(f"도착점 {decdeg_to_degmin(end)}이 제한 구역 '{dest_restriction}' 내에 있습니다")
             raise DestinationInRestrictionError(end, dest_restriction)
         
         # 출발점과 가장 가까운 네트워크 노드 찾기
