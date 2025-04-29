@@ -1,21 +1,41 @@
-from .coordinates import *
-from .geojson_utils import *
-from .map_utils import *
-# marine_network 모듈에서 필요한 함수와 클래스를 명시적으로 import (언더스코어 함수 포함)
-from .marine_network import (
-    get_marnet,  # 기본 MARNET 네트워크 반환
-    get_m_network_5km,  # 5km 간격 네트워크 반환
-    get_m_network_10km,  # 10km 간격 네트워크 반환
-    get_m_network_20km,  # 20km 간격 네트워크 반환
-    get_m_network_50km,  # 50km 간격 네트워크 반환
-    get_m_network_100km,  # 100km 간격 네트워크 반환
-    _get_mnet_path,  # 내부적으로 사용되는 네트워크 경로 반환 함수
-    get_marnet_sample,  # 샘플 네트워크 반환
-    add_node_and_connect
-)
-from .route_utils import *
-from .shapely_utils import *
-from .shoreline import *
+try:
+    # 패키지 내부에서 임포트할 때 사용되는 상대 경로
+    from .coordinates import *
+    from .geojson_utils import *
+    from .map_utils import *
+    from .marine_network import (
+        get_marnet,  # 기본 MARNET 네트워크 반환
+        get_m_network_5km,  # 5km 간격 네트워크 반환
+        get_m_network_10km,  # 10km 간격 네트워크 반환
+        get_m_network_20km,  # 20km 간격 네트워크 반환
+        get_m_network_50km,  # 50km 간격 네트워크 반환
+        get_m_network_100km,  # 100km 간격 네트워크 반환
+        _get_mnet_path,  # 내부적으로 사용되는 네트워크 경로 반환 함수
+        get_marnet_sample,  # 샘플 네트워크 반환
+        add_node_and_connect
+    )
+    from .route_utils import *
+    from .shapely_utils import *
+    from .shoreline import *
+except ImportError:
+    # 외부에서 패키지를 임포트할 때 사용되는 절대 경로
+    from seavoyage.utils.coordinates import *
+    from seavoyage.utils.geojson_utils import *
+    from seavoyage.utils.map_utils import *
+    from seavoyage.utils.marine_network import (
+        get_marnet,
+        get_m_network_5km,
+        get_m_network_10km,
+        get_m_network_20km,
+        get_m_network_50km,
+        get_m_network_100km,
+        _get_mnet_path,
+        get_marnet_sample,
+        add_node_and_connect
+    )
+    from seavoyage.utils.route_utils import *
+    from seavoyage.utils.shapely_utils import *
+    from seavoyage.utils.shoreline import *
 
 
 __all__ = (
