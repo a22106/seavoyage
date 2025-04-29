@@ -11,6 +11,7 @@ from typing import Optional
 from searoute import Marnet
 from searoute.utils import distance
 from seavoyage.modules.restriction import CustomRestriction
+from seavoyage.utils.coordinates import decdeg_to_degmin
 from seavoyage.utils.shapely_utils import is_valid_edge
 from seavoyage.log import logger
 from seavoyage.exceptions import (
@@ -679,13 +680,13 @@ class MNetwork(Marnet):
         # 출발점이 제한구역에 있는지 확인
         is_origin_restricted, origin_restriction = self.is_point_in_restriction(origin)
         if is_origin_restricted:
-            logger.info(f"출발점 {origin}이 제한 구역 '{origin_restriction}' 내에 있습니다")
+            logger.info(f"출발점 {decdeg_to_degmin(origin)}이 제한 구역 '{origin_restriction}' 내에 있습니다")
             raise StartInRestrictionError(origin, origin_restriction)
             
         # 도착점이 제한구역에 있는지 확인
         is_dest_restricted, dest_restriction = self.is_point_in_restriction(destination)
         if is_dest_restricted:
-            logger.info(f"도착점 {destination}이 제한 구역 '{dest_restriction}' 내에 있습니다")
+            logger.info(f"도착점 {decdeg_to_degmin(destination)}이 제한 구역 '{dest_restriction}' 내에 있습니다")
             raise DestinationInRestrictionError(destination, dest_restriction)
         
         if method not in ("dijkstra", "astar"):

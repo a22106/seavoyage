@@ -109,27 +109,3 @@ def remove_edges_cross_land(marnet, land_polygon: MultiPolygon):
         marnet.remove_edge(u=u, v=v)
     
     return marnet
-
-# def load_land_polygon(file_path: str) -> MultiPolygon:
-#     """
-#     shapefile, gpkg 파일에서 MultiPolygon 객체로 반환
-#     :param file_path: shapefile, gpkg 파일 경로
-#     :return: MultiPolygon 객체
-#     """
-#     gdf: gpd.GeoDataFrame = gpd.read_file(file_path)
-#     return gdf.union_all()
-
-
-def load_land_polygon(file_path: str) -> MultiPolygon:
-    """
-    shapefile, gpkg 파일에서 MultiPolygon 객체로 반환
-    :param file_path: shapefile, gpkg 파일 경로
-    :return: MultiPolygon 객체
-    """
-    gdf: gpd.GeoDataFrame = gpd.read_file(file_path)
-    gdf['geometry'] = gdf['geometry'].make_valid()
-    try:
-        return gdf.union_all(method='coverage')
-    except:
-        # coverage method가 실패하면 unary method 시도
-        return gdf.union_all(method='unary')
