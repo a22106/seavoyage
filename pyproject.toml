@@ -1,6 +1,6 @@
 [project]
 name = "seavoyage"
-version = "0.1.11"
+version = "0.1.12"
 description = "An improved version of searoute package for calculating the shortest sea route between two points on Earth."
 readme = "README.md"
 requires-python = ">=3.11"
