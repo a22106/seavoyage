@@ -71,6 +71,7 @@ class MNetwork(Marnet):
         return created_edges
 
     # ② add_node_and_connect ------------------------------------
+    # TODO: KNN 적용되지 않는 문제 해결
     def add_node_and_connect(
         self,
         new_node: tuple[float, float],
