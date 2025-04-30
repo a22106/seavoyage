@@ -17,6 +17,14 @@ def end_point():
     return (-4.158, 44.644)
 
 @pytest.fixture
+def busan_point():
+    return (129.07, 35.179)
+
+@pytest.fixture
+def palm_beach_point():
+    return (-79.808370, 26.675735)
+
+@pytest.fixture
 def jwc_geojson_path():
     # 실제 경로는 settings.py의 RESTRICTIONS_DIR 기준
     return os.path.join('notebooks/restrictions', 'jwc.geojson')
@@ -76,6 +84,18 @@ class TestCustomRestriction:
         sv.register_custom_restriction('hra', hra_geojson_path)
         names = sv.list_custom_restrictions()
         assert 'jwc' in names and 'hra' in names, '여러 제한구역이 정상적으로 등록되어야 합니다.'
+        
+    def test_generate_route_with_custom_restrictiona_and_not_cross_restriction(self, busan_point, palm_beach_point, jwc_geojson_path):
+        sv.register_custom_restriction('jwc', jwc_geojson_path)
+        route_with_restriction = sv.seavoyage(busan_point, palm_beach_point, restrictions=['jwc'])
+        route_without_restriction = sv.seavoyage(busan_point, palm_beach_point)
+        assert route_with_restriction is not None, '경로가 생성되어야 합니다.'
+        assert route_without_restriction is not None, '경로가 생성되어야 합니다.'
+        assert route_with_restriction['geometry']['coordinates'] is not None, '경로의 좌표가 생성되어야 합니다.'
+        assert route_without_restriction['geometry']['coordinates'] is not None, '경로의 좌표가 생성되어야 합니다.'
+        assert route_with_restriction['geometry']['coordinates'] == route_without_restriction['geometry']['coordinates'], '제한구역을 지나지 않기때문에 경로가 같아야 합니다.'
+        
+
 
     def test_route_with_and_without_restriction(self, start_point, end_point, jwc_geojson_path):
         sv.register_custom_restriction('jwc', jwc_geojson_path)

@@ -1,6 +1,6 @@
 [project]
 name = "seavoyage"
-version = "0.1.11"
+version = "0.1.15"
 description = "An improved version of searoute package for calculating the shortest sea route between two points on Earth."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -46,8 +46,10 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["seavoyage"]
 include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["seavoyage*"]
 
 [tool.setuptools.package-data]
 seavoyage = [

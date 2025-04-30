@@ -27,6 +27,8 @@ class MNetwork(Marnet):
         super().__init__(*args, **kwargs)
         # 커스텀 제한 구역 저장 딕셔너리
         self.custom_restrictions: dict[str, CustomRestriction] = {}
+        
+    
 
     def add_node_with_edges(self, node: tuple[float, float], threshold: float = 100.0, land_polygon = None):
         """
@@ -69,73 +71,73 @@ class MNetwork(Marnet):
                 
         return created_edges
 
-    def add_node_and_connect(self, new_node: tuple[float, float], k: int = 5, land_polygon = shoreline):
-        """
-        기존 MNetwork 객체에 신규 노드를 추가한 뒤,
-        해당 노드에 대해서만 기존 노드들과 KNN, Delaunay Triangulation 기반 엣지를 생성합니다.
+    # ② add_node_and_connect ------------------------------------
+    def add_node_and_connect(
+        self,
+        new_node: tuple[float, float],
+        k: int = 5,
+        land_polygon = shoreline,
+    ):
+        self.add_node(new_node)          # 새 노드 등록
+        created_edges: list[tuple] = []
 
-        :param new_node: (lon, lat) 튜플
-        :param k: KNN에서 연결할 이웃 수
-        :param land_polygon: 육지 폴리곤 (선택사항)
-        :return: 생성된 엣지 리스트 [(node1, node2, 거리), ...]
-        """
-        # 신규 노드 추가
-        self.add_node(new_node)
-
-        # 생성된 엣지들을 저장할 리스트
-        created_edges = []
-        
-        # 1. KNN 엣지 생성
+        # --- KNN ------------------------------------------------
         coords = np.array(list(self.nodes))
-        if len(coords) <= 1:
-            logger.info("노드가 1개뿐이므로 엣지 생성 없음")
+        if len(coords) == 1:             # 자신밖에 없을 때
+            self.update_kdtree()
             return []
 
-        # KNN: 신규 노드 기준으로만
-        nbrs = NearestNeighbors(n_neighbors=min(k+1, len(coords)), algorithm='ball_tree').fit(coords)
-        distances, indices = nbrs.kneighbors([new_node])
-        
-        for idx, dist in zip(indices[0][1:], distances[0][1:]):  # 첫 번째는 자기 자신
-            neighbor = tuple(coords[idx])
+        coords_aug, idx_map = self._augment_coords(coords)
+
+        # 새 노드도 같은 ‘연장 경도’ 체계로 위치시킵니다
+        ref_lon = ((new_node[0] + 180) % 360) - 180  # [-180,180] 로 정규화
+        new_node_aug = np.array([ref_lon, new_node[1]])
+
+        nbrs = NearestNeighbors(
+            n_neighbors=min(k + 1, len(coords_aug)),
+            algorithm="ball_tree",
+        ).fit(coords_aug)
+        dists, inds = nbrs.kneighbors([new_node_aug])
+
+        for aug_idx, _ in zip(inds[0][1:], dists[0][1:]):   # 자기 자신 제외
+            neighbor = tuple(coords[idx_map[aug_idx]])
             line = LineString([new_node, neighbor])
             if land_polygon is not None and not is_valid_edge(line, land_polygon):
                 continue
-            weight = float(distance(new_node, neighbor, units="km"))
-            self.add_edge(new_node, neighbor, weight=weight)
-            created_edges.append((new_node, neighbor, weight))
+            w = float(distance(new_node, neighbor, units="km"))
+            self.add_edge(new_node, neighbor, weight=w)
+            created_edges.append((new_node, neighbor, w))
 
-        # 2. Delaunay: 기존 노드 + 신규 노드로 삼각분할, 신규 노드가 포함된 edge만 추가
+        # --- Delaunay ------------------------------------------
         if len(coords) >= 3:
-            coords_with_new = np.vstack([coords, new_node])
+            coords_with_new = np.vstack([coords_aug, new_node_aug])
             try:
                 tri = Delaunay(coords_with_new)
                 idx_new = len(coords_with_new) - 1
                 for simplex in tri.simplices:
-                    if idx_new in simplex:
-                        for i in range(3):
-                            for j in range(i+1, 3):
-                                idx_i, idx_j = simplex[i], simplex[j]
-                                if idx_new in (idx_i, idx_j):
-                                    node_i = tuple(coords_with_new[idx_i])
-                                    node_j = tuple(coords_with_new[idx_j])
-                                    if self.has_edge(node_i, node_j):
-                                        continue
-                                    line = LineString([node_i, node_j])
-                                    if land_polygon is not None and not is_valid_edge(line, land_polygon):
-                                        continue
-                                    weight = float(distance(node_i, node_j, units="km"))
-                                    self.add_edge(node_i, node_j, weight=weight)
-                                    created_edges.append((node_i, node_j, weight))
+                    if idx_new not in simplex:
+                        continue
+                    for i in range(3):
+                        for j in range(i + 1, 3):
+                            a, b = simplex[i], simplex[j]
+                            if idx_new not in (a, b):
+                                continue
+                            n1 = tuple(coords[idx_map[a]])
+                            n2 = tuple(coords[idx_map[b]])
+                            if self.has_edge(n1, n2):
+                                continue
+                            line = LineString([n1, n2])
+                            if land_polygon is not None and not is_valid_edge(line, land_polygon):
+                                continue
+                            w = float(distance(n1, n2, units="km"))
+                            self.add_edge(n1, n2, weight=w)
+                            created_edges.append((n1, n2, w))
             except Exception as e:
-                logger.error(f"Delaunay 삼각분할 중 오류 발생: {e}")
-        
-        logger.info(f"신규 노드에 대해 KNN+Delaunay 엣지 생성 완료: {len(created_edges)}개")
-        
-        # KDTree 업데이트
-        self.update_kdtree()
-        
-        return created_edges
+                logger.error(f"Delaunay 오류: {e}")
 
+        logger.debug(f"KNN+Delaunay 엣지 {len(created_edges)}개 생성 완료")
+        self.update_kdtree()
+        return created_edges
     def add_nodes_with_edges(self, nodes: list[tuple[float, float]], threshold: float = 100.0, land_polygon = None):
         """
         여러 노드들을 추가하고 임계값 내의 모든 노드들(기존 + 새로운)과 자동으로 엣지를 생성합니다.
@@ -171,7 +173,7 @@ class MNetwork(Marnet):
                     self.add_edge(node, other_node, weight=dist)
                     all_created_edges.append((node, other_node, dist))
                     
-        logger.info(f"Added {len(all_created_edges)} edges")
+        logger.debug(f"Added {len(all_created_edges)} edges")
         return all_created_edges
 
     def _extract_point_coordinates(self, point: geojson.Point):
@@ -320,7 +322,7 @@ class MNetwork(Marnet):
                 self.add_edge(node1, node2, **edge_attrs)
                 all_created_edges.append((node1, node2, weight))
         
-        logger.info(f"Total {len(all_created_edges)} edges added")
+        logger.debug(f"Total {len(all_created_edges)} edges added")
         return all_created_edges
     
     def to_geojson(self, file_path: str = None) -> geojson.FeatureCollection:
@@ -364,175 +366,137 @@ class MNetwork(Marnet):
         MNetwork 객체
         """
         mnetwork = cls()
-        return mnetwork.load_from_geojson(*args)
+        mnetwork = mnetwork.load_from_geojson(*args)
+        mnetwork.update_kdtree()
+        return mnetwork
+
+    @staticmethod
+    def _norm_coord(coord: tuple[float, float]) -> tuple[float, float]:
+        lon, lat = coord
+        lon = (lon + 180.0) % 360.0 - 180.0   # →  -180 ~ <180
+        return lon, lat
 
     def load_from_geojson(self, *args):
         """
         GeoJSON 파일 경로 또는 GeoJSON 객체로부터 그래프를 로드합니다.
-        기존 searoute의 load_from_geojson에 Polygon 타입 지원을 추가했고,
-        GeoJSON 객체를 직접 입력받을 수 있습니다.
-        
-        Parameters
-        ----------
-        *args : 파일 경로 또는 GeoJSON 객체
-            - 문자열: GeoJSON 파일 경로로 해석됩니다.
-            - dict: GeoJSON 객체(사전)로 해석됩니다.
-            - geojson.GeoJSON: GeoJSON 객체로 해석됩니다.
-            
-        Returns
-        -------
-        MNetwork 객체 (self)
+        Polygon, MultiPolygon 도 지원하며 모든 경도를 [-180, 180) 범위로
+        정규화해서 날짜변경선 문제를 방지합니다.
         """
+        # ── 내부 유틸 ────────────────────────────────────────────
+        def _fix_coords(coords):
+            """
+            재귀적으로 좌표 배열을 순회하면서 (lon, lat) 튜플을
+            self._norm_coord()로 정규화한 뒤 리스트로 반환
+            """
+            if coords is None:
+                return coords
+
+            # 단일 점 [lon, lat]
+            if isinstance(coords[0], (int, float)):
+                return list(self._norm_coord(tuple(coords)))
+
+            # 중첩 리스트   [[...], [...]]
+            return [_fix_coords(c) for c in coords]
+
+        def _cast_dict_to_geo(obj_dict):
+            """dict → geojson 객체로 변환 (LineString 등)"""
+            gtype = obj_dict.get("type")
+            return {
+                "LineString":    geojson.LineString,
+                "MultiLineString": geojson.MultiLineString,
+                "Point":         geojson.Point,
+                "MultiPoint":    geojson.MultiPoint,
+                "Polygon":       geojson.Polygon,
+                "MultiPolygon":  geojson.MultiPolygon,
+            }.get(gtype, geojson.GeoJSON)(obj_dict["coordinates"])
+
+        # ── 본체 ────────────────────────────────────────────────
         for arg in args:
-            # 파일 경로인 경우 파일에서 데이터를 로드
+            # 1) 파일 경로 or 객체 로드 ---------------------------------
             if isinstance(arg, str):
                 if not os.path.exists(arg):
-                    raise FileNotFoundError(f"GeoJSON 파일을 찾을 수 없습니다: {arg}")
-                with open(arg, 'r') as f:
+                    raise FileNotFoundError(f"GeoJSON 파일 없음: {arg}")
+                with open(arg, "r") as f:
                     data = geojson.load(f)
-            # dict 또는 geojson 객체인 경우 직접 사용
             elif isinstance(arg, (dict, geojson.base.GeoJSON)):
                 data = arg
             else:
-                raise TypeError(f"지원하지 않는 인자 타입입니다: {type(arg)}. 문자열 경로 또는 GeoJSON 객체가 필요합니다.")
+                raise TypeError("str 경로 또는 GeoJSON/dict 만 허용")
 
+            # 2) 좌표 정규화 & 그래프에 반영 -----------------------------
             def handle_geometry(geometry, properties):
-                # 문자열이나 dict 타입의 geometry를 geojson 객체로 변환
+                # dict → geojson 객체 변환
                 if isinstance(geometry, dict):
-                    geo_type = geometry.get('type')
-                    coords = geometry.get('coordinates')
-                    
-                    # dict 형태의 geometry를 적절한 geojson 타입으로 변환
-                    if geo_type == 'LineString':
-                        geometry = geojson.LineString(coords)
-                    elif geo_type == 'MultiLineString':
-                        geometry = geojson.MultiLineString(coords)
-                    elif geo_type == 'Point':
-                        geometry = geojson.Point(coords)
-                    elif geo_type == 'MultiPoint':
-                        geometry = geojson.MultiPoint(coords)
-                    elif geo_type == 'Polygon':
-                        geometry = geojson.Polygon(coords)
-                    elif geo_type == 'MultiPolygon':
-                        geometry = geojson.MultiPolygon(coords)
-                
-                if not hasattr(geometry, 'type'):
-                    raise ValueError(f"지오메트리에 'type' 속성이 없습니다: {geometry}")
-                
-                if geometry.type == 'LineString':
+                    geometry = _cast_dict_to_geo(geometry)
+
+                # 좌표 정규화
+                geometry["coordinates"] = _fix_coords(geometry["coordinates"])
+
+                # 이후 기존 로직과 동일 --------------------------------
+                gtype = geometry.type
+                if gtype == "LineString":
                     coords = geometry.coordinates
                     for u, v in zip(coords[:-1], coords[1:]):
                         self.add_edge(tuple(u), tuple(v), **properties)
-                        # 양방향 엣지 추가
                         self.add_edge(tuple(v), tuple(u), **properties)
-                elif geometry.type == 'MultiLineString':
-                    for line_string in geometry.coordinates:
-                        for u, v in zip(line_string[:-1], line_string[1:]):
+                elif gtype == "MultiLineString":
+                    for line in geometry.coordinates:
+                        for u, v in zip(line[:-1], line[1:]):
                             self.add_edge(tuple(u), tuple(v), **properties)
-                            # 양방향 엣지 추가
                             self.add_edge(tuple(v), tuple(u), **properties)
-                elif geometry.type == 'Point':
-                    coords = tuple(geometry.coordinates)
-                    self.add_node(coords, **properties)
-                elif geometry.type == 'MultiPoint':
-                    for point_coords in geometry.coordinates:
-                        coords = tuple(point_coords)
-                        self.add_node(coords, **properties)
-                elif geometry.type == 'Polygon':
-                    # 폴리곤 테두리를 LineString처럼 처리
-                    # 첫 번째 링(외부 링)만 처리
-                    outer_ring = geometry.coordinates[0]
-                    # 폴리곤의 각 점을 노드로 추가하고 인접한 점 사이에 엣지 생성
-                    for u, v in zip(outer_ring[:-1], outer_ring[1:]):  # 마지막 점은 첫 점과 같으므로 제외
+                elif gtype == "Point":
+                    self.add_node(tuple(geometry.coordinates), **properties)
+                elif gtype == "MultiPoint":
+                    for pt in geometry.coordinates:
+                        self.add_node(tuple(pt), **properties)
+                elif gtype == "Polygon":
+                    outer = geometry.coordinates[0]
+                    for u, v in zip(outer[:-1], outer[1:]):
                         self.add_edge(tuple(u), tuple(v), **properties)
-                        # 양방향 엣지 추가
                         self.add_edge(tuple(v), tuple(u), **properties)
-                    # 폴리곤 닫기 (마지막 점과 첫 점 연결) - 이미 GeoJSON에서 닫혀있을 수 있지만 안전하게 처리
-                    if outer_ring[0] != outer_ring[-1]:
-                        self.add_edge(tuple(outer_ring[-1]), tuple(outer_ring[0]), **properties)
-                        self.add_edge(tuple(outer_ring[0]), tuple(outer_ring[-1]), **properties)
-                elif geometry.type == 'MultiPolygon':
-                    # 각 폴리곤의 외부 링을 처리
-                    for polygon in geometry.coordinates:
-                        outer_ring = polygon[0]  # 첫 번째 링(외부 링)
-                        for u, v in zip(outer_ring[:-1], outer_ring[1:]):
+                    if outer[0] != outer[-1]:
+                        self.add_edge(tuple(outer[-1]), tuple(outer[0]), **properties)
+                        self.add_edge(tuple(outer[0]), tuple(outer[-1]), **properties)
+                elif gtype == "MultiPolygon":
+                    for poly in geometry.coordinates:
+                        outer = poly[0]
+                        for u, v in zip(outer[:-1], outer[1:]):
                             self.add_edge(tuple(u), tuple(v), **properties)
                             self.add_edge(tuple(v), tuple(u), **properties)
-                        # 폴리곤 닫기
-                        if outer_ring[0] != outer_ring[-1]:
-                            self.add_edge(tuple(outer_ring[-1]), tuple(outer_ring[0]), **properties)
-                            self.add_edge(tuple(outer_ring[0]), tuple(outer_ring[-1]), **properties)
+                        if outer[0] != outer[-1]:
+                            self.add_edge(tuple(outer[-1]), tuple(outer[0]), **properties)
+                            self.add_edge(tuple(outer[0]), tuple(outer[-1]), **properties)
                 else:
-                    # 다른 타입의 지오메트리 처리 (필요한 경우)
-                    logger.info(f"Not supported geometry type: {geometry.type}")
+                    logger.debug(f"Unsupported geometry type: {gtype}")
 
-            # FeatureCollection, Feature 또는 직접 Geometry 객체인지 확인
-            if hasattr(data, 'type'):
-                data_type = data.type
-            elif isinstance(data, dict) and 'type' in data:
-                data_type = data['type']
-            else:
-                raise ValueError("입력된 GeoJSON 데이터에 'type' 속성이 없습니다.")
-                
-            # FeatureCollection 처리
-            if data_type == 'FeatureCollection':
-                # CRS 정보 추출
-                if hasattr(data, 'crs'):
-                    crs = data.crs
-                elif isinstance(data, dict) and 'crs' in data:
-                    crs = data['crs']
-                else:
-                    crs = None
-                    
-                if crs:
-                    crs_name = None
-                    if isinstance(crs, dict) and 'properties' in crs:
-                        crs_name = crs['properties'].get('name')
-                    elif hasattr(crs, 'properties') and hasattr(crs.properties, 'name'):
-                        crs_name = crs.properties.name
-                        
-                    if crs_name:
-                        self.graph['crs'] = crs_name
-                
-                # Features 처리
-                features = data.features if hasattr(data, 'features') else data.get('features', [])
-                for feature in features:
-                    # 피처에서 geometry와 properties 추출
-                    if hasattr(feature, 'geometry') and hasattr(feature, 'properties'):
-                        geometry = feature.geometry
-                        properties = feature.properties
-                    elif isinstance(feature, dict):
-                        geometry = feature.get('geometry', {})
-                        properties = feature.get('properties', {})
-                    else:
-                        continue
-                        
-                    handle_geometry(geometry, properties)
-            # Feature 처리
-            elif data_type == 'Feature':
-                if hasattr(data, 'geometry') and hasattr(data, 'properties'):
-                    geometry = data.geometry
-                    properties = data.properties
-                elif isinstance(data, dict):
-                    geometry = data.get('geometry', {})
-                    properties = data.get('properties', {})
-                else:
-                    continue
-                    
-                handle_geometry(geometry, properties)
-            # 직접 지오메트리 객체 처리
-            else:
-                # 지오메트리 타입인 경우
-                geometry_types = ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon']
-                if data_type in geometry_types:
-                    handle_geometry(data, {})
-                else:
-                    logger.info(f"지원하지 않는 GeoJSON 타입: {data_type}")
+            # 3) Feature / FeatureCollection 구분 -----------------------
+            dtype = data["type"] if isinstance(data, dict) else data.type
+            if dtype == "FeatureCollection":
+                # CRS
+                crs_name = (data.get("crs", {})
+                               .get("properties", {})
+                               .get("name")) if isinstance(data, dict) else \
+                           (getattr(getattr(data, "crs", None), "properties", None)
+                               or {}).get("name")
+                if crs_name:
+                    self.graph["crs"] = crs_name
 
-        # KDTree 업데이트
+                feats = data["features"] if isinstance(data, dict) else data.features
+                for feat in feats:
+                    geom = feat["geometry"] if isinstance(feat, dict) else feat.geometry
+                    props = feat.get("properties", {}) if isinstance(feat, dict) else feat.properties
+                    handle_geometry(geom, props)
+            elif dtype == "Feature":
+                geom = data["geometry"] if isinstance(data, dict) else data.geometry
+                props = data.get("properties", {}) if isinstance(data, dict) else data.properties
+                handle_geometry(geom, props)
+            else:  # geometry 단독
+                handle_geometry(data, {})
+
+        # 4) KD-Tree 갱신 ---------------------------------------------
         self.update_kdtree()
         return self
-
+    
     @classmethod
     def from_networkx(cls, graph: nx.Graph):
         """
@@ -552,7 +516,7 @@ class MNetwork(Marnet):
                     coords = (attrs['x'], attrs['y'])
                     mnetwork.add_node(coords, **{k: v for k, v in attrs.items() if k not in ['x', 'y']})
                 else:
-                    logger.info(f"Skipping node {node} - no coordinate information")
+                    logger.debug(f"Skipping node {node} - no coordinate information")
         
         # 모든 엣지 추가
         for u, v, attrs in graph.edges(data=True):
@@ -574,7 +538,7 @@ class MNetwork(Marnet):
             if isinstance(u_node, tuple) and isinstance(v_node, tuple):
                 mnetwork.add_edge(u_node, v_node, **attrs)
             else:
-                logger.info(f"Skipping edge {u}-{v} - no coordinate information")
+                logger.debug(f"Skipping edge {u}-{v} - no coordinate information")
         
         # 그래프 속성 복사
         for key, value in graph.graph.items():
@@ -585,6 +549,23 @@ class MNetwork(Marnet):
         
         return mnetwork
     
+    @classmethod
+    def from_marnet(cls, marnet_obj: "Marnet") -> "MNetwork":
+        """기존 Marnet 객체를 MNetwork 객체로 변환"""
+        if not isinstance(marnet_obj, Marnet):
+            raise TypeError("marnet_obj must be an instance of Marnet")
+
+        mnetwork = cls.from_networkx(marnet_obj)
+
+        mnetwork.restrictions = list(getattr(marnet_obj, "restrictions", []))
+        mnetwork.custom_restrictions = dict(
+            getattr(marnet_obj, "custom_restrictions", {})
+        )
+
+        mnetwork.update_kdtree()
+
+        return mnetwork
+    
     def add_restriction(self, restriction: CustomRestriction):
         """
         커스텀 제한 구역 추가
@@ -593,7 +574,7 @@ class MNetwork(Marnet):
             restriction: CustomRestriction 객체
         """
         self.custom_restrictions[restriction.name] = restriction
-        logger.info(f"Restriction added: {restriction.name}")
+        logger.debug(f"Restriction added: {restriction.name}")
         
     def remove_restriction(self, name: str):
         """
@@ -673,20 +654,20 @@ class MNetwork(Marnet):
             IsolatedOriginError: 출발지가 제한 구역에 의해 고립되어 있는 경우
         """
         # 디버깅 로그 추가
-        logger.info(f"시작 좌표: {origin}, 목적지 좌표: {destination}")
-        logger.info(f"현재 적용된 기본 제한 구역: {self.restrictions}")
-        logger.info(f"현재 적용된 커스텀 제한 구역: {list(self.custom_restrictions.keys())}")
+        logger.debug(f"시작 좌표: {origin}, 목적지 좌표: {destination}")
+        logger.debug(f"현재 적용된 기본 제한 구역: {self.restrictions}")
+        logger.debug(f"현재 적용된 커스텀 제한 구역: {list(self.custom_restrictions.keys())}")
         
         # 출발점이 제한구역에 있는지 확인
         is_origin_restricted, origin_restriction = self.is_point_in_restriction(origin)
         if is_origin_restricted:
-            logger.info(f"출발점 {decdeg_to_degmin(origin)}이 제한 구역 '{origin_restriction}' 내에 있습니다")
+            logger.debug(f"출발점 {decdeg_to_degmin(origin)}이 제한 구역 '{origin_restriction}' 내에 있습니다")
             raise StartInRestrictionError(origin, origin_restriction)
             
         # 도착점이 제한구역에 있는지 확인
         is_dest_restricted, dest_restriction = self.is_point_in_restriction(destination)
         if is_dest_restricted:
-            logger.info(f"도착점 {decdeg_to_degmin(destination)}이 제한 구역 '{dest_restriction}' 내에 있습니다")
+            logger.debug(f"도착점 {decdeg_to_degmin(destination)}이 제한 구역 '{dest_restriction}' 내에 있습니다")
             raise DestinationInRestrictionError(destination, dest_restriction)
         
         if method not in ("dijkstra", "astar"):
@@ -699,17 +680,17 @@ class MNetwork(Marnet):
         # 출발점과 KDTree로 찾은 노드 사이의 선분이 제한 구역을 통과하는지 확인
         if origin != origin_node:  # 출발점과 네트워크 노드가 다른 경우
             line_to_origin = LineString([origin, origin_node])
-            logger.info(f"출발점 {origin}에서 가장 가까운 네트워크 노드: {origin_node}")
+            logger.debug(f"출발점 {origin}에서 가장 가까운 네트워크 노드: {origin_node}")
             
             # 커스텀 제한 구역 확인
             for name, restriction in self.custom_restrictions.items():
                 if restriction.polygon.intersects(line_to_origin):
-                    logger.info(f"출발점 {origin}에서 가장 가까운 노드 {origin_node}까지의 경로가 제한 구역 '{name}'와 교차합니다")
+                    logger.debug(f"출발점 {origin}에서 가장 가까운 노드 {origin_node}까지의 경로가 제한 구역 '{name}'와 교차합니다")
                     raise IsolatedOriginError(origin, [name])
         
         # 이웃 노드 수 로깅
         neighbors = list(self.neighbors(origin_node))
-        logger.info(f"출발점 노드 {origin_node}의 이웃 노드 수: {len(neighbors)}")
+        logger.debug(f"출발점 노드 {origin_node}의 이웃 노드 수: {len(neighbors)}")
         
         # 커스텀 제한 구역을 고려한 가중치 함수
         def custom_weight(u, v, data):
@@ -722,19 +703,19 @@ class MNetwork(Marnet):
         
         # 출발지 노드가 고립되었는지 확인
         is_isolated = True
-        logger.info(f"출발점 노드 {origin_node}의 고립 여부 검사 시작")
+        logger.debug(f"출발점 노드 {origin_node}의 고립 여부 검사 시작")
         
         for neighbor in neighbors:
             edge_data = self.get_edge_data(origin_node, neighbor)
             is_valid_edge = self._filter_custom_restricted_edge(origin_node, neighbor, edge_data)
-            logger.info(f"  - 이웃 노드 {neighbor}: 유효한 경로 = {is_valid_edge}")
+            logger.debug(f"  - 이웃 노드 {neighbor}: 유효한 경로 = {is_valid_edge}")
             
             if is_valid_edge:
                 is_isolated = False
                 break
         
         if is_isolated:
-            logger.info(f"출발점 {origin}이 제한 구역에 의해 고립되어 있습니다")
+            logger.debug(f"출발점 {origin}이 제한 구역에 의해 고립되어 있습니다")
             restriction_names = list(self.custom_restrictions.keys())
             if self.restrictions:
                 restriction_names.extend([str(r) for r in self.restrictions])
@@ -745,15 +726,33 @@ class MNetwork(Marnet):
                 result = nx.shortest_path(self, origin_node, destination_node, weight=custom_weight)
             elif method == "astar":
                 result = nx.astar_path(self, origin_node, destination_node, weight=custom_weight)
-            logger.info(f"경로 탐색 성공: {len(result)} 노드")
+            logger.debug(f"경로 탐색 성공: {len(result)} 노드")
             return result
         except nx.NetworkXNoPath:
             # NetworkX에서 경로를 찾지 못한 경우
-            logger.info(f"경로를 찾을 수 없습니다: {origin} -> {destination}")
+            logger.debug(f"경로를 찾을 수 없습니다: {origin} -> {destination}")
             restriction_names = list(self.custom_restrictions.keys())
             if self.restrictions:
                 restriction_names.extend([str(r) for r in self.restrictions])
             raise UnreachableDestinationError(origin, destination, restriction_names)
+        
+    # ① 경도 복제 헬퍼 ------------------------------------------
+    @staticmethod
+    def _augment_coords(coords: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """
+        coords: (N,2)  [lon, lat]
+        return:
+            coords_aug : (3N,2)  경도 ±360° 로 확장
+            idx_map    : (3N,)   각 복제행이 가리키는 원본 좌표 인덱스
+        """
+        lons, lats = coords[:, 0], coords[:, 1]
+        coords_minus = np.column_stack((lons - 360.0, lats))
+        coords_plus  = np.column_stack((lons + 360.0, lats))
+
+        coords_aug = np.vstack([coords, coords_minus, coords_plus])
+        idx_map    = np.repeat(np.arange(len(coords)), 3)
+
+        return coords_aug, idx_map
 
 
 if __name__ == "__main__":
@@ -764,7 +763,7 @@ if __name__ == "__main__":
     # 단일 노드 추가 및 엣지 자동 생성
     new_node = (129.165, 35.070)
     created_edges = marnet.add_node_with_edges(new_node, threshold=100.0)
-    logger.info(created_edges)
+    logger.debug(created_edges)
 
     # 여러 노드 추가 및 엣지 자동 생성
     new_nodes = [
@@ -773,6 +772,6 @@ if __name__ == "__main__":
         (129.175, 35.070)
     ]
     all_created_edges = marnet.add_nodes_with_edges(new_nodes, threshold=100.0)
-    logger.info(all_created_edges)
+    logger.debug(all_created_edges)
     
     marnet.print_graph_info()

@@ -120,7 +120,7 @@ def register_custom_restriction(name: str, geojson_file_path: str):
     """
     restriction = CustomRestriction.from_geojson_file(name, geojson_file_path)
     _CUSTOM_RESTRICTION_REGISTRY[name] = restriction
-    logger.info(f"제한 구역 등록 성공: {name}, 파일: {geojson_file_path}")
+    logger.debug(f"제한 구역 등록 성공: {name}, 파일: {geojson_file_path}")
     return restriction
 
 def get_custom_restriction(name: str) -> Optional[CustomRestriction]:

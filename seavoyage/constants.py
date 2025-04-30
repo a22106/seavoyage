@@ -37,5 +37,5 @@ class AvoidPassageEnum(Enum):
     
     
 if __name__ == "__main__":
-    logger.info(UnitEnum.values_list())
-    logger.info(AvoidPassageEnum.values_list())
+    logger.debug(UnitEnum.values_list())
+    logger.debug(AvoidPassageEnum.values_list())

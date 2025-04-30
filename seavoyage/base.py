@@ -1,7 +1,8 @@
 import networkx as nx
 import os
-from searoute import searoute
+from searoute import searoute, setup_M
 from searoute.classes.passages import Passage
+from searoute.classes.marnet import Marnet
 from seavoyage.log import logger
 from seavoyage.exceptions import RouteError, UnreachableDestinationError, StartInRestrictionError, DestinationInRestrictionError, IsolatedOriginError
 
@@ -10,7 +11,7 @@ from seavoyage.modules.restriction import CustomRestriction, get_custom_restrict
 from seavoyage.classes.m_network import MNetwork
 from seavoyage.utils.coordinates import decdeg_to_degmin
 
-_DEFAULT_MNETWORK = MNetwork().load_geojson(_get_mnet_path('10km_modified.geojson')) if os.path.exists(_get_mnet_path('10km_modified.geojson')) else get_m_network_20km()
+_DEFAULT_MNETWORK = MNetwork.from_marnet(setup_M())
 
 # 원본 seavoyage 함수
 def _original_seavoyage(start: tuple[float, float], end: tuple[float, float], **kwargs):
@@ -25,7 +26,7 @@ def _original_seavoyage(start: tuple[float, float], end: tuple[float, float], **
         geojson.FeatureCollection(dict): 경로 정보
     """
     if not kwargs.get("M"):
-        kwargs["M"] = get_m_network_20km()
+        kwargs["M"] = setup_M()
     return searoute(start, end, **kwargs)
 
 def _classify_restrictions(restrictions):
@@ -38,10 +39,10 @@ def _classify_restrictions(restrictions):
     for r in restrictions:
         custom_restriction = get_custom_restriction(r)
         if custom_restriction:
-            logger.info(f"커스텀 제한 구역 '{r}' 발견")
+            logger.debug(f"커스텀 제한 구역 '{r}' 발견")
             custom.append(custom_restriction)
         elif hasattr(Passage, r):
-            logger.info(f"기본 제한 구역 '{r}' 발견")
+            logger.debug(f"기본 제한 구역 '{r}' 발견")
             default.append(getattr(Passage, r))
         else:
             logger.warning(f"알 수 없는 제한 구역: '{r}'")
@@ -53,7 +54,7 @@ def _apply_restrictions_to_network(mnetwork: MNetwork, custom_restrictions:list[
     """
     네트워크 객체에 제한 구역을 적용
     """
-    if not isinstance(mnetwork, MNetwork):
+    if not isinstance(mnetwork, MNetwork | Marnet):
         raise ValueError(f"mnetwork must be an instance of MNetwork, not {type(mnetwork)}: {mnetwork}")
     mnetwork.restrictions = default_passages
     for restriction in custom_restrictions:
@@ -99,7 +100,7 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], restrictions
 
     custom_restrictions, default_passages, unknown_restrictions = [], [], []
     if restrictions:
-        logger.info(f"요청된 제한 구역: {restrictions}")
+        logger.debug(f"요청된 제한 구역: {restrictions}")
         custom_restrictions, default_passages, unknown_restrictions = _classify_restrictions(restrictions)
 
     # 네트워크에 제한 구역을 적용
@@ -113,7 +114,7 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], restrictions
     
     try:
         # 고립 점 확인 로직: 먼저 출발점이 고립되었는지 확인
-        logger.info(f"출발점 {start}와 목적지 {end} 사이의 경로 계산 시작")
+        logger.debug(f"출발점 {start}와 목적지 {end} 사이의 경로 계산 시작")
         
         # 출발점이 제한 구역 내에 있는지 확인
         is_origin_restricted, origin_restriction = mnetwork.is_point_in_restriction(start)
