@@ -28,7 +28,6 @@ class MNetwork(Marnet):
         # 커스텀 제한 구역 저장 딕셔너리
         self.custom_restrictions: dict[str, CustomRestriction] = {}
         
-    
 
     def add_node_with_edges(self, node: tuple[float, float], threshold: float = 100.0, land_polygon = None):
         """
@@ -78,42 +77,50 @@ class MNetwork(Marnet):
         k: int = 5,
         land_polygon = shoreline,
     ):
-        self.add_node(new_node)          # 새 노드 등록
+        # 0) 경도 정규화(선택) + 노드 등록
+        new_node = self._norm_coord(new_node)
+        if new_node not in self:
+            self.add_node(new_node)
+
         created_edges: list[tuple] = []
-
-        # --- KNN ------------------------------------------------
         coords = np.array(list(self.nodes))
-        if len(coords) == 1:             # 자신밖에 없을 때
+
+        if len(coords) <= 1:
             self.update_kdtree()
-            return []
+            return created_edges
 
+        # 1) KNN ------------------------------------------------------
         coords_aug, idx_map = self._augment_coords(coords)
-
-        # 새 노드도 같은 ‘연장 경도’ 체계로 위치시킵니다
-        ref_lon = ((new_node[0] + 180) % 360) - 180  # [-180,180] 로 정규화
-        new_node_aug = np.array([ref_lon, new_node[1]])
+        new_node_aug = np.array(new_node)          # 동일 좌표계
 
         nbrs = NearestNeighbors(
             n_neighbors=min(k + 1, len(coords_aug)),
             algorithm="ball_tree",
         ).fit(coords_aug)
+
         dists, inds = nbrs.kneighbors([new_node_aug])
 
-        for aug_idx, _ in zip(inds[0][1:], dists[0][1:]):   # 자기 자신 제외
+        for aug_idx in inds[0][1:]:                # 자기 자신 제외
             neighbor = tuple(coords[idx_map[aug_idx]])
-            line = LineString([new_node, neighbor])
-            if land_polygon is not None and not is_valid_edge(line, land_polygon):
+            if neighbor == new_node:               # 동일 노드 스킵
                 continue
-            w = float(distance(new_node, neighbor, units="km"))
-            self.add_edge(new_node, neighbor, weight=w)
-            created_edges.append((new_node, neighbor, w))
 
-        # --- Delaunay ------------------------------------------
+            line = LineString([new_node, neighbor])
+            if land_polygon and not is_valid_edge(line, land_polygon):
+                continue
+
+            w = float(distance(new_node, neighbor, units="km"))
+            if not self.has_edge(new_node, neighbor):
+                self.add_edge(new_node, neighbor, weight=w)
+                created_edges.append((new_node, neighbor, w))
+
+        # 2) Delaunay -------------------------------------------------
         if len(coords) >= 3:
-            coords_with_new = np.vstack([coords_aug, new_node_aug])
+            coords_with_new = np.vstack([coords, new_node])  # 원본 좌표만
             try:
                 tri = Delaunay(coords_with_new)
                 idx_new = len(coords_with_new) - 1
+
                 for simplex in tri.simplices:
                     if idx_new not in simplex:
                         continue
@@ -122,22 +129,27 @@ class MNetwork(Marnet):
                             a, b = simplex[i], simplex[j]
                             if idx_new not in (a, b):
                                 continue
-                            n1 = tuple(coords[idx_map[a]])
-                            n2 = tuple(coords[idx_map[b]])
+                            n1 = tuple(coords_with_new[a])
+                            n2 = tuple(coords_with_new[b])
+
                             if self.has_edge(n1, n2):
                                 continue
                             line = LineString([n1, n2])
-                            if land_polygon is not None and not is_valid_edge(line, land_polygon):
+                            if land_polygon and not is_valid_edge(line, land_polygon):
                                 continue
+
                             w = float(distance(n1, n2, units="km"))
                             self.add_edge(n1, n2, weight=w)
                             created_edges.append((n1, n2, w))
             except Exception as e:
                 logger.error(f"Delaunay 오류: {e}")
 
-        logger.debug(f"KNN+Delaunay 엣지 {len(created_edges)}개 생성 완료")
+        # 3) 마무리 ----------------------------------------------------
         self.update_kdtree()
+        logger.info(f"신규 엣지 {len(created_edges)}개 생성")
         return created_edges
+
+
     def add_nodes_with_edges(self, nodes: list[tuple[float, float]], threshold: float = 100.0, land_polygon = None):
         """
         여러 노드들을 추가하고 임계값 내의 모든 노드들(기존 + 새로운)과 자동으로 엣지를 생성합니다.
@@ -750,28 +762,6 @@ class MNetwork(Marnet):
         coords_plus  = np.column_stack((lons + 360.0, lats))
 
         coords_aug = np.vstack([coords, coords_minus, coords_plus])
-        idx_map    = np.repeat(np.arange(len(coords)), 3)
+        idx_map    = np.tile(np.arange(len(coords)), 3)
 
         return coords_aug, idx_map
-
-
-if __name__ == "__main__":
-# 사용 예시
-    marnet = MNetwork()
-    marnet.load_geojson("apps/pathfinding/data/marnet/marnet_plus_100km.geojson")
-
-    # 단일 노드 추가 및 엣지 자동 생성
-    new_node = (129.165, 35.070)
-    created_edges = marnet.add_node_with_edges(new_node, threshold=100.0)
-    logger.debug(created_edges)
-
-    # 여러 노드 추가 및 엣지 자동 생성
-    new_nodes = [
-        (129.170, 35.075),
-        (129.180, 35.080),
-        (129.175, 35.070)
-    ]
-    all_created_edges = marnet.add_nodes_with_edges(new_nodes, threshold=100.0)
-    logger.debug(all_created_edges)
-    
-    marnet.print_graph_info()
