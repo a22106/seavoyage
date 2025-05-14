@@ -123,7 +123,7 @@ def calculate_route_length(route, unit):
         point2 = coordinates[i]
         point2 = (point2[1], point2[0])  # 위도, 경도 순서로 변환
         
-        distance = haversine(point1, point2, unit=unit)
+        distance = haversine(point1, point2, unit=unit, normalize=True)
         total_distance += distance
     
     return total_distance
