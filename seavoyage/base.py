@@ -1,17 +1,27 @@
-import networkx as nx
-import os
+from haversine import haversine, Unit
 from searoute import searoute, setup_M
 from searoute.classes.passages import Passage
 from searoute.classes.marnet import Marnet
 from seavoyage.log import logger
-from seavoyage.exceptions import RouteError, UnreachableDestinationError, StartInRestrictionError, DestinationInRestrictionError, IsolatedOriginError
+from seavoyage.exceptions import RouteError, StartInRestrictionError, DestinationInRestrictionError, IsolatedOriginError
 
-from seavoyage.utils import get_m_network_20km, _get_mnet_path
 from seavoyage.modules.restriction import CustomRestriction, get_custom_restriction, list_custom_restrictions
 from seavoyage.classes.m_network import MNetwork
 from seavoyage.utils.coordinates import decdeg_to_degmin
+from seavoyage.utils.route_utils import calculate_route_length
 
 _DEFAULT_MNETWORK = MNetwork.from_marnet(setup_M())
+
+units_map = {
+    "km": Unit.KILOMETERS,
+    "m": Unit.METERS,
+    "mi": Unit.MILES,
+    "nm": Unit.NAUTICAL_MILES,
+    "ft": Unit.FEET,
+    "in": Unit.INCHES,
+    "rad": Unit.RADIANS,
+    "deg": Unit.DEGREES,
+}
 
 # 원본 seavoyage 함수
 def _original_seavoyage(start: tuple[float, float], end: tuple[float, float], **kwargs):
@@ -27,7 +37,17 @@ def _original_seavoyage(start: tuple[float, float], end: tuple[float, float], **
     """
     if not kwargs.get("M"):
         kwargs["M"] = setup_M()
-    return searoute(start, end, **kwargs)
+    route = searoute(start, end, **kwargs)
+    
+    # 단위 별 length property 계산 
+    units = kwargs.get("units", "nm")
+    unit = units_map[units]
+    
+    # 총 거리 계산
+    total_distance = calculate_route_length(route, unit)
+    
+    route['properties']['length'] = total_distance
+    return route
 
 def _classify_restrictions(restrictions):
     """
@@ -85,6 +105,7 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], restrictions
 
     if start == end:
         # 동일한 포인트 입력 시, 길이 0의 경로 반환
+        units = kwargs.pop("units", "nm")
         return {
             "geometry": {
                 "coordinates": [list(start)],
@@ -93,7 +114,7 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], restrictions
             "properties": {
                 "duration_hours": 0.0,
                 "length": 0.0,
-                "units": "km"
+                "units": units
             },
             "type": "Feature"
         }

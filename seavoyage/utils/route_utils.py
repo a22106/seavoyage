@@ -5,6 +5,7 @@ from searoute.utils import distance
 from seavoyage.classes.m_network import MNetwork
 from seavoyage.utils.geojson_utils import load_geojson
 from seavoyage.settings import MARNET_DIR, RESTRICTIONS_DIR
+from haversine import haversine
 
 def make_searoute_nodes(nodes: list[tuple[float, float]]):
     searoute_nodes = {}
@@ -99,3 +100,30 @@ def create_geojson_from_marnet(marnet: sr.Marnet, save=False) -> geojson.Feature
             geojson.dump(feature_collection, f)
         
     return feature_collection
+
+def calculate_route_length(route, unit):
+    """
+    경로의 총 거리를 계산하는 함수
+    
+    Args:
+        route (dict): 경로 GeoJSON 객체
+        unit: 거리 단위 (haversine 패키지의 Unit 열거형)
+        
+    Returns:
+        float: 계산된 총 거리
+    """
+    # 좌표 목록 가져오기
+    coordinates = route['geometry']['coordinates']
+    total_distance = 0
+    
+    # 각 좌표 구간의 거리 계산 및 합산
+    for i in range(1, len(coordinates)):
+        point1 = coordinates[i-1]
+        point1 = (point1[1], point1[0])  # 위도, 경도 순서로 변환
+        point2 = coordinates[i]
+        point2 = (point2[1], point2[0])  # 위도, 경도 순서로 변환
+        
+        distance = haversine(point1, point2, unit=unit)
+        total_distance += distance
+    
+    return total_distance

@@ -43,6 +43,7 @@ __all__ = (
         "get_additional_points",
         "make_searoute_edges",
         "create_geojson_from_marnet",
+        "calculate_route_length"
     ]
     # shapely_utils
     + [
