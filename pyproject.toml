@@ -1,6 +1,6 @@
 [project]
 name = "seavoyage"
-version = "0.1.16"
+version = "0.1.18"
 description = "An improved version of searoute package for calculating the shortest sea route between two points on Earth."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -31,6 +31,7 @@ dependencies = [
     "haversine>=2.9.0",
     "myst-parser>=4.0.0",
     "networkx>=3.4.2",
+    "pytest>=8.3.5",
     "ruff>=0.11.7",
     "scikit-learn>=1.6.1",
     "scipy>=1.13.0",
