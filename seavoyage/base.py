@@ -76,7 +76,13 @@ def _apply_restrictions_to_network(mnetwork: MNetwork, custom_restrictions:list[
     """
     if not isinstance(mnetwork, MNetwork | Marnet):
         raise ValueError(f"mnetwork must be an instance of MNetwork, not {type(mnetwork)}: {mnetwork}")
-    mnetwork.restrictions = default_passages
+    
+    # 기존 제한 구역을 덮어쓰지 않고 새로운 제한 구역만 추가
+    for passage in default_passages:
+        if passage not in mnetwork.restrictions:
+            mnetwork.restrictions.append(passage)
+    
+    # 커스텀 제한 구역 추가
     for restriction in custom_restrictions:
         mnetwork.add_restriction(restriction)
 
