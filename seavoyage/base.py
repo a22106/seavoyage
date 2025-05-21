@@ -1,4 +1,4 @@
-from haversine import haversine, Unit
+from haversine import Unit
 from searoute import searoute, setup_M
 from searoute.classes.passages import Passage
 from searoute.classes.marnet import Marnet
@@ -87,7 +87,7 @@ def _apply_restrictions_to_network(mnetwork: MNetwork, custom_restrictions:list[
         mnetwork.add_restriction(restriction)
 
 
-def seavoyage(start: tuple[float, float], end: tuple[float, float], restrictions=None, **kwargs):
+def seavoyage(start: tuple[float, float], end: tuple[float, float], **kwargs):
     """
     선박 경로 계산 (커스텀 제한 구역 지원)
 
@@ -108,6 +108,18 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], restrictions
         IsolatedOriginError: 출발점이 제한 구역에 의해 고립되어 있는 경우
     """
     mnetwork: MNetwork = kwargs.pop("M", _DEFAULT_MNETWORK)
+    mnetwork.reset_restrictions()  # 제한 구역 초기화
+    custom_restrictions, default_passages, unknown_restrictions = [], [], []
+    
+    if kwargs.get('restrictions') is None:
+        kwargs['restrictions'] = [Passage.northwest]
+    else:
+        if not isinstance(kwargs['restrictions'], list):
+            raise ValueError("restrictions must be a list")
+        logger.debug(f"요청된 제한 구역: {kwargs['restrictions']}")
+        kwargs['restrictions'].extend([Passage.northwest])
+        custom_restrictions, default_passages, unknown_restrictions = _classify_restrictions(kwargs['restrictions'])
+    
 
     if start == end:
         # 동일한 포인트 입력 시, 길이 0의 경로 반환
@@ -125,10 +137,6 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], restrictions
             "type": "Feature"
         }
 
-    custom_restrictions, default_passages, unknown_restrictions = [], [], []
-    if restrictions:
-        logger.debug(f"요청된 제한 구역: {restrictions}")
-        custom_restrictions, default_passages, unknown_restrictions = _classify_restrictions(restrictions)
 
     # 네트워크에 제한 구역을 적용
     _apply_restrictions_to_network(mnetwork, custom_restrictions, default_passages)

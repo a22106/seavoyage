@@ -14,6 +14,7 @@ from seavoyage.modules.restriction import CustomRestriction
 from seavoyage.utils.coordinates import decdeg_to_degmin
 from seavoyage.utils.shapely_utils import is_valid_edge
 from seavoyage.log import logger
+from searoute.classes.passages import Passage
 from seavoyage.exceptions import (
     UnreachableDestinationError, 
     StartInRestrictionError, 
@@ -27,7 +28,29 @@ class MNetwork(Marnet):
         super().__init__(*args, **kwargs)
         # 커스텀 제한 구역 저장 딕셔너리
         self.custom_restrictions: dict[str, CustomRestriction] = {}
+        # 초기 제한 구역 상태 저장
+        self._initial_restrictions = [Passage.northwest]
+
+    def reset_restrictions(self):
+        """
+        모든 제한 구역을 초기 상태로 초기화합니다.
+        커스텀 제한 구역은 모두 제거하고, 
+        기본 제한 구역은 초기 상태로 되돌립니다.
+        """
+        # 기본 제한 구역 초기화
+        self.restrictions = self._initial_restrictions.copy() if hasattr(self, '_initial_restrictions') else []
         
+        # 커스텀 제한 구역 초기화
+        self.custom_restrictions.clear()
+        
+        logger.debug(f"제한 구역이 초기화되었습니다: 기본={self.restrictions}, 커스텀={list(self.custom_restrictions.keys())}")
+        
+    def save_initial_state(self):
+        """
+        현재 기본 제한 구역 상태를 초기 상태로 저장합니다.
+        """
+        self._initial_restrictions = self.restrictions.copy() if hasattr(self, 'restrictions') else []
+        logger.debug(f"초기 제한 구역 상태 저장: {self._initial_restrictions}")
 
     def add_node_with_edges(self, node: tuple[float, float], threshold: float = 100.0, land_polygon = None):
         """
