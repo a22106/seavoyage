@@ -2,6 +2,7 @@ from haversine import Unit
 from searoute import searoute, setup_M
 from searoute.classes.passages import Passage
 from searoute.classes.marnet import Marnet
+from searoute.classes.ports import Ports
 from seavoyage.log import logger
 from seavoyage.exceptions import RouteError, StartInRestrictionError, DestinationInRestrictionError, IsolatedOriginError
 
@@ -87,18 +88,35 @@ def _apply_restrictions_to_network(mnetwork: MNetwork, custom_restrictions:list[
         mnetwork.add_restriction(restriction)
 
 
-def seavoyage(start: tuple[float, float], end: tuple[float, float], **kwargs):
+def seavoyage(start: tuple[float, float], end: tuple[float, float], *,
+              restrictions: list[str] | None = None,
+              M: MNetwork | Marnet | None = None,
+              units: str = "nm",
+              speed_knot: float = 10,
+              append_orig_dest: bool = False,
+              include_ports: bool = False,
+              port_params: dict| None = None,
+              P: Ports | None = None,
+              return_passages: bool = False,
+              ) -> dict:
     """
     선박 경로 계산 (커스텀 제한 구역 지원)
 
     Args:
         start (tuple[float, float]): 출발 좌표
         end (tuple[float, float]): 종점 좌표
-        restrictions (list, optional): 제한 구역 목록
-        **kwargs: 추가 인자
+        restrictions (list[str], optional): 제한 구역 목록
+        M (MNetwork | Marnet, optional): 해상 네트워크 객체
+        units (str): 거리 단위 (기본값: "nm")
+        speed_knot (float): 선박 속도 (기본값: 10 노트)
+        append_orig_dest (bool): 출발지/목적지를 경로에 추가 여부 (기본값: False)
+        include_ports (bool): 항구 포함 여부 (기본값: False)
+        port_params (dict, optional): 항구 관련 설정
+        P (Ports, optional): 항구 네트워크 객체
+        return_passages (bool): 통과한 항로 반환 여부 (기본값: False)
 
     Returns:
-        geojson.FeatureCollection(dict): 경로 정보
+        dict: 경로 정보 (GeoJSON Feature)
         
     Raises:
         RouteError: 경로 계산 중 오류가 발생한 경우
@@ -107,23 +125,24 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], **kwargs):
         UnreachableDestinationError: 제한 구역으로 인해 목적지에 도달할 수 없는 경우
         IsolatedOriginError: 출발점이 제한 구역에 의해 고립되어 있는 경우
     """
-    mnetwork: MNetwork = kwargs.pop("M", _DEFAULT_MNETWORK)
+    mnetwork: MNetwork = M or _DEFAULT_MNETWORK
     mnetwork.reset_restrictions()  # 제한 구역 초기화
     custom_restrictions, default_passages, unknown_restrictions = [], [], []
     
-    if kwargs.get('restrictions') is None:
-        kwargs['restrictions'] = [Passage.northwest]
+    if restrictions is None:
+        processed_restrictions = [Passage.northwest]
     else:
-        if not isinstance(kwargs['restrictions'], list):
+        if not isinstance(restrictions, list):
             raise ValueError("restrictions must be a list")
-        logger.debug(f"요청된 제한 구역: {kwargs['restrictions']}")
-        kwargs['restrictions'].extend([Passage.northwest])
-        custom_restrictions, default_passages, unknown_restrictions = _classify_restrictions(kwargs['restrictions'])
+        logger.debug(f"요청된 제한 구역: {restrictions}")
+        processed_restrictions = restrictions + [Passage.northwest]
+    
+    # 제한 구역 분류 (항상 수행)
+    custom_restrictions, default_passages, unknown_restrictions = _classify_restrictions(processed_restrictions)
     
 
     if start == end:
         # 동일한 포인트 입력 시, 길이 0의 경로 반환
-        units = kwargs.pop("units", "nm")
         return {
             "geometry": {
                 "coordinates": [list(start)],
@@ -145,7 +164,22 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], **kwargs):
     logger.debug(f"적용된 기본 제한 구역: {mnetwork.restrictions}")
     logger.debug(f"적용된 커스텀 제한 구역: {list(mnetwork.custom_restrictions.keys())}")
 
-    kwargs["M"] = mnetwork
+    # kwargs 딕셔너리 구성
+    kwargs = {
+        "M": mnetwork,
+        "units": units,
+        "speed_knot": speed_knot,
+        "append_orig_dest": append_orig_dest,
+        "restrictions": processed_restrictions,
+        "include_ports": include_ports,
+        "return_passages": return_passages
+    }
+    
+    # 선택적 파라미터들 추가
+    if port_params is not None:
+        kwargs["port_params"] = port_params
+    if P is not None:
+        kwargs["P"] = P
     
     try:
         # 고립 점 확인 로직: 먼저 출발점이 고립되었는지 확인
@@ -212,14 +246,13 @@ def custom_seavoyage(start: tuple[float, float], end: tuple[float, float], custo
     커스텀 제한 구역을 고려한 선박 경로 계산
     
     Args:
-        start (tuple[float, float]): 출발 좌표 (경도, 위도)
-        end (tuple[float, float]): 목적지 좌표 (경도, 위도)
-        custom_restrictions (List[str]): 커스텀 제한 구역 이름 목록
-        default_restrictions (List[str]): 기본 제한 구역 목록 (Passage 클래스의 상수들)
-        **kwargs: searoute에 전달할 추가 인자
-        
+        start: 출발 좌표 (경도, 위도)
+        end: 목적지 좌표 (경도, 위도)
+        custom_restrictions: 커스텀 제한 구역 이름 목록
+        default_restrictions: 기본 제한 구역 목록 (Passage 클래스의 상수들)
+        **kwargs: seavoyage에 전달할 추가 인자
     Returns:
-        geojson.Feature: 경로 정보
+        dict: 경로 정보 (GeoJSON Feature)
         
     Raises:
         RouteError: 경로 계산 중 오류가 발생한 경우
@@ -235,4 +268,23 @@ def custom_seavoyage(start: tuple[float, float], end: tuple[float, float], custo
     if custom_restrictions:
         restrictions.extend(custom_restrictions)
     
-    return seavoyage(start, end, restrictions=restrictions, **kwargs)
+    # kwargs에서 seavoyage의 새로운 parameter들 추출
+    seavoyage_params = {
+        'M': kwargs.pop('M', None),
+        'units': kwargs.pop('units', 'nm'),
+        'speed_knot': kwargs.pop('speed_knot', 10),
+        'append_orig_dest': kwargs.pop('append_orig_dest', False),
+        'include_ports': kwargs.pop('include_ports', False),
+        'port_params': kwargs.pop('port_params', None),
+        'P': kwargs.pop('P', None),
+        'return_passages': kwargs.pop('return_passages', False)
+    }
+    
+    # restrictions 추가 (빈 리스트가 아닌 경우에만)
+    if restrictions:
+        seavoyage_params['restrictions'] = restrictions
+    
+    # None 값인 선택적 parameter들 제거
+    seavoyage_params = {k: v for k, v in seavoyage_params.items() if v is not None}
+    
+    return seavoyage(start, end, **seavoyage_params)
