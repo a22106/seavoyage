@@ -43,67 +43,156 @@ pip install -e ".[dev]"
 
 ## 빠른 시작
 
-### 1. 기본 경로 생성
+### 1. 가장 간단한 사용법 (새로운 API)
 ```python
 import seavoyage as sv
 
 # 출발지와 도착지 좌표 (경도, 위도)
-start = (129.17, 35.075)
-end = (-4.158, 44.644)
+start = (129.17, 35.075)  # 부산
+end = (4.158, 51.921)     # 로테르담
 
-# 기본 해상 네트워크에서 최적 경로 탐색
+# 빠른 경로 정보 얻기
+info = sv.get_quick_route(start, end)
+print(f"거리: {info['distance_nm']:.1f} 해리 ({info['distance_km']:.1f} km)")
+print(f"예상 시간: {info['duration_hours']:.1f} 시간")
+```
+
+### 2. 간단한 API 사용 (새로운 API)
+```python
+# 제한구역과 네트워크 해상도를 지정하여 경로 계산
+route = sv.calculate_sea_route_simple(
+    start=(129.17, 35.075),
+    end=(-73.949, 40.650),  # 뉴욕
+    restrictions=["suez", "panama"],
+    network_resolution="20km",
+    units="km"
+)
+print(f"거리: {route.properties.length:.1f} km")
+```
+
+### 3. 고급 설정 사용 (새로운 API)
+```python
+# 설정 객체를 사용한 세밀한 제어
+coords = sv.RouteCoordinates(
+    start=(103.822, 1.264),  # 싱가포르
+    end=(23.708, 37.945)     # 아테네
+)
+
+route_config = sv.RouteConfig(
+    units="nm",
+    speed_knot=15,
+    restrictions=["suez"],
+    return_passages=True
+)
+
+network_config = sv.NetworkConfig(resolution="10km")
+
+route = sv.calculate_sea_route(coords, route_config, network_config)
+print(f"거리: {route.properties.length:.1f} 해리")
+```
+
+### 4. 기존 API 사용 (하위 호환성)
+```python
+# 기존 방식도 계속 사용 가능
 route = sv.seavoyage(start, end)
 print("경로 길이:", route["properties"]["length"], "km")
 print("예상 소요 시간:", route["properties"]["duration_hours"], "시간")
 ```
 
-### 2. 커스텀 제한구역(해역) 적용
+### 5. 커스텀 제한구역(해역) 적용
 ```python
 # 제한구역 GeoJSON 파일 등록 (예: 'jwc.geojson')
 sv.register_custom_restriction('jwc', '/path/to/jwc.geojson')
 
-# 제한구역을 적용하여 경로 탐색
-route = sv.seavoyage(start, end, restrictions=['jwc'])
-print("제한구역 적용 후 경로 길이:", route["properties"]["length"], "km")
+# 새로운 API로 제한구역 적용
+route = sv.calculate_sea_route_simple(
+    start=start,
+    end=end,
+    restrictions=['jwc', 'suez'],
+    units="km"
+)
+print(f"제한구역 적용 후 거리: {route.properties.length:.1f} km")
+
+# 기존 API도 사용 가능
+route_dict = sv.seavoyage(start, end, restrictions=['jwc'])
+print("제한구역 적용 후 경로 길이:", route_dict["properties"]["length"], "km")
 ```
 
-### 3. 다양한 해상 네트워크 해상도 사용
-#### 3.1 미리 설정된 해상 네트워크 사용
+### 6. 다양한 해상 네트워크 해상도 사용
+#### 6.1 새로운 API로 간단하게 해상도 지정
+```python
+# 해상도를 문자열로 간단히 지정
+route = sv.calculate_sea_route_simple(
+    start=start,
+    end=end,
+    network_resolution="10km"  # "5km", "10km", "20km", "50km", "100km"
+)
+```
+
+#### 6.2 기존 방식: 네트워크 객체 직접 사용
 ```python
 # 5km, 10km, 20km, 50km, 100km 네트워크 지원
 mnet_5km = sv.get_m_network_5km()
 route = sv.seavoyage(start, end, M=mnet_5km)
 ```
 
-#### 3.2 사용자 정의 해상 네트워크 사용
+#### 6.3 사용자 정의 해상 네트워크 사용
 ```python
 # 사용자 정의 해상 네트워크 생성
 mnet = sv.MNetwork().from_geojson('/path/to/mnet.geojson')
-route = sv.seavoyage(start, end, M=mnet)
+
+# 새로운 API 사용
+network_config = sv.NetworkConfig(maritime_network=mnet)
+route = sv.calculate_sea_route(coords, network_config=network_config)
+
+# 기존 API 사용
+route_dict = sv.seavoyage(start, end, M=mnet)
 ```
 
-### 4. folium 기반 지도 시각화
+### 7. folium 기반 지도 시각화
 ```python
 from seavoyage.utils import map_folium
 
-# folium 지도 객체로 변환
-m = map_folium(route)
+# 새로운 API의 RouteResult를 dictionary로 변환
+route_dict = route.to_dict()
+m = map_folium(route_dict)
+m.save("route_map.html")
+
+# 또는 기존 API의 결과를 직접 사용
+route_dict = sv.seavoyage(start, end)
+m = map_folium(route_dict)
 m.save("route_map.html")
 ```
 
 ## 주요 API
+
+### 새로운 간편 API (권장)
+- `get_quick_route(start, end)`
+  : 가장 간단한 경로 정보 조회 (거리, 시간, 경유점 수)
+- `calculate_sea_route_simple(start, end, restrictions=None, network_resolution=None, units="nm")`
+  : 간단한 매개변수로 경로 계산
+- `calculate_sea_route(coordinates, route_config=None, network_config=None)`
+  : 설정 객체를 사용한 고급 경로 계산
+
+### 데이터 모델 클래스
+- `RouteCoordinates`: 출발지/도착지 좌표
+- `RouteConfig`: 경로 계산 설정 (단위, 속도, 제한구역 등)
+- `NetworkConfig`: 네트워크 설정 (해상도, 커스텀 네트워크 등)
+- `RouteResult`: 경로 계산 결과 (거리, 시간, 경로 좌표 등)
+
+### 기존 API (하위 호환성)
 - `seavoyage(start, end, restrictions=None, M=None, ...)`
-: 최적 경로 탐색 (제한구역, 네트워크 해상도 등 옵션 지원)
+  : 최적 경로 탐색 (제한구역, 네트워크 해상도 등 옵션 지원)
 - `MNetwork`
-: 해상 네트워크 객체 (노드/엣지 추가, GeoJSON 변환 등 지원)
+  : 해상 네트워크 객체 (노드/엣지 추가, GeoJSON 변환 등 지원)
 - `register_custom_restriction(name, geojson_file_path)`
-: 커스텀 제한구역 등록
+  : 커스텀 제한구역 등록
 - `list_custom_restrictions()`
-: 등록된 제한구역 이름 목록 반환
+  : 등록된 제한구역 이름 목록 반환
 - `get_custom_restriction(name)`
-: 제한구역 객체 반환
+  : 제한구역 객체 반환
 - `map_folium(data, ...)`
-: folium 기반 지도 시각화
+  : folium 기반 지도 시각화
 
 ## 라이선스
 이 프로젝트는 Apache License 2.0 라이선스 하에 배포됩니다.
@@ -146,9 +235,15 @@ limitations under the License.
 - [x] **로깅 레벨 관리**: 로깅 설정이 분산되어 있음. 중앙화된 로깅 설정 필요
 
 ### 3. API 설계 개선
-- [ ] **함수 시그니처 복잡도**: `seavoyage()` 함수가 너무 많은 매개변수를 가짐. 설정 객체나 빌더 패턴 고려
-- [ ] **일관성 없는 네이밍**: `M`, `P` 같은 단일 문자 매개변수명. 더 명확한 이름 사용 필요
-- [ ] **반환 타입 명확화**: 함수들이 dict를 반환하는데, 구체적인 타입 정의나 dataclass 사용 권장
+- [x] **함수 시그니처 복잡도**: `seavoyage()` 함수가 너무 많은 매개변수를 가짐. 설정 객체나 빌더 패턴 고려
+  - RouteConfig, NetworkConfig 등 설정 객체 도입
+  - calculate_sea_route(), calculate_sea_route_simple(), get_quick_route() 등 단순화된 API 추가
+- [x] **일관성 없는 네이밍**: `M`, `P` 같은 단일 문자 매개변수명. 더 명확한 이름 사용 필요
+  - 새 API에서 maritime_network, port_network 등 명확한 이름 사용
+  - 기존 API는 하위 호환성을 위해 유지
+- [x] **반환 타입 명확화**: 함수들이 dict를 반환하는데, 구체적인 타입 정의나 dataclass 사용 권장
+  - RouteResult, RouteProperties, RouteGeometry 등 dataclass 정의
+  - to_dict(), from_dict() 메서드로 기존 형식과 호환
 
 ### 4. 테스트 및 문서화
 - [ ] **테스트 커버리지**: 테스트 커버리지 측정 및 리포트 도구 부재

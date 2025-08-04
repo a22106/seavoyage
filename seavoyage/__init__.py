@@ -21,10 +21,25 @@ from seavoyage.exceptions import (
     DestinationInRestrictionError,
     IsolatedOriginError
 )
+from seavoyage.api import (
+    calculate_sea_route,
+    calculate_sea_route_simple,
+    get_quick_route
+)
+from seavoyage.models import (
+    RouteConfig,
+    NetworkConfig,
+    RouteCoordinates,
+    RouteResult,
+    RouteProperties,
+    RouteGeometry
+)
 
 __all__ = (
     [MNetwork]+
     [seavoyage, custom_seavoyage]+
+    [calculate_sea_route, calculate_sea_route_simple, get_quick_route]+
+    [RouteConfig, NetworkConfig, RouteCoordinates, RouteResult, RouteProperties, RouteGeometry]+
     [*utils.__all__]+
     [PACKAGE_ROOT, MARNET_DIR, DATA_DIR]+
     [constants]+
