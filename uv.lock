@@ -931,7 +931,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/13/6b/4ce34317619515670
 
 [[package]]
 name = "seavoyage"
-version = "0.1.20"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "folium" },

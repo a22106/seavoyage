@@ -164,6 +164,78 @@ m = map_folium(route_dict)
 m.save("route_map.html")
 ```
 
+### 8. 진행 상황 표시 (새로운 기능)
+```python
+# 8.1 간단한 진행 상황 표시
+from seavoyage import SimpleProgressCallback
+
+route = sv.seavoyage_with_progress(
+    start, end,
+    progress_callback=SimpleProgressCallback(verbose=True)
+)
+
+# 8.2 커스텀 진행 상황 처리
+def my_progress_handler(info):
+    print(f"[{info.stage.value}] {info.percent:.1f}% - {info.message}")
+
+route = sv.seavoyage_with_progress(
+    start, end,
+    progress_callback=my_progress_handler
+)
+
+# 8.3 새로운 API와 함께 사용
+config = sv.RouteConfig(
+    progress_callback=SimpleProgressCallback(),
+    units="km"
+)
+route = sv.calculate_sea_route_with_recovery(coords, config)
+```
+
+### 9. 에러 복구 및 재시도 (새로운 기능)
+```python
+# 9.1 자동 재시도 활성화
+config = sv.RouteConfig(
+    enable_retry=True,
+    max_retry_attempts=3,
+    retry_delay=1.0  # 초 단위
+)
+
+route = sv.calculate_sea_route_with_recovery(coords, config)
+
+# 9.2 진행 상황과 재시도를 함께 사용
+def progress_with_retry_info(info):
+    if "Retry" in info.message:
+        print(f"⚠️  {info.message}")
+    else:
+        print(f"📍 {info.message}")
+
+config = sv.RouteConfig(
+    progress_callback=progress_with_retry_info,
+    enable_retry=True,
+    max_retry_attempts=5
+)
+
+route = sv.calculate_sea_route_with_recovery(coords, config)
+
+# 9.3 고급 재시도 설정
+from seavoyage import RetryConfig, RetryStrategy
+
+retry_config = sv.RetryConfig(
+    max_attempts=3,
+    initial_delay=1.0,
+    max_delay=30.0,
+    strategy=RetryStrategy.EXPONENTIAL_BACKOFF,
+    backoff_factor=2.0
+)
+
+route = sv.seavoyage_with_progress(
+    start, end,
+    enable_retry=True,
+    retry_config=retry_config,
+    progress_callback=SimpleProgressCallback()
+)
+```
+
 ## 주요 API
 
 ### 새로운 간편 API (권장)
@@ -174,11 +246,24 @@ m.save("route_map.html")
 - `calculate_sea_route(coordinates, route_config=None, network_config=None)`
   : 설정 객체를 사용한 고급 경로 계산
 
+### 향상된 API (진행 상황 및 에러 복구)
+- `seavoyage_with_progress(start, end, ..., progress_callback=None, enable_retry=True)`
+  : 진행 상황 추적과 자동 재시도가 포함된 경로 계산
+- `calculate_sea_route_with_recovery(coordinates, route_config=None, network_config=None)`
+  : 에러 복구 메커니즘이 통합된 고급 경로 계산
+
 ### 데이터 모델 클래스
 - `RouteCoordinates`: 출발지/도착지 좌표
-- `RouteConfig`: 경로 계산 설정 (단위, 속도, 제한구역 등)
+- `RouteConfig`: 경로 계산 설정 (단위, 속도, 제한구역, 진행 상황 콜백, 재시도 설정 등)
 - `NetworkConfig`: 네트워크 설정 (해상도, 커스텀 네트워크 등)
 - `RouteResult`: 경로 계산 결과 (거리, 시간, 경로 좌표 등)
+
+### 진행 상황 및 재시도 클래스
+- `ProgressCallback`: 진행 상황 콜백 인터페이스
+- `SimpleProgressCallback`: 콘솔 출력 진행 상황 표시
+- `FunctionProgressCallback`: 사용자 정의 함수 콜백
+- `RetryConfig`: 재시도 동작 설정
+- `RetryStrategy`: 재시도 전략 (IMMEDIATE, LINEAR_BACKOFF, EXPONENTIAL_BACKOFF)
 
 ### 기존 API (하위 호환성)
 - `seavoyage(start, end, restrictions=None, M=None, ...)`
@@ -246,10 +331,10 @@ limitations under the License.
   - to_dict(), from_dict() 메서드로 기존 형식과 호환
 
 ### 4. 테스트 및 문서화
-- [ ] **테스트 커버리지**: 테스트 커버리지 측정 및 리포트 도구 부재
-- [ ] **통합 테스트 부족**: 단위 테스트는 있으나 end-to-end 시나리오 테스트 필요
-- [ ] **API 문서화**: Sphinx 설정은 있으나 실제 API 문서가 부족함. docstring 표준화 필요
-- [ ] **예제 코드 검증**: README의 예제 코드가 실제로 작동하는지 자동 검증 필요
+- [x] **테스트 커버리지**: 테스트 커버리지 측정 및 리포트 도구 부재
+- [x] **통합 테스트 부족**: 단위 테스트는 있으나 end-to-end 시나리오 테스트 필요
+- [x] **API 문서화**: Sphinx 설정은 있으나 실제 API 문서가 부족함. docstring 표준화 필요
+- [x] **예제 코드 검증**: README의 예제 코드가 실제로 작동하는지 자동 검증 필요
 
 ### 5. 성능 및 최적화
 - [ ] **대용량 데이터 처리**: shapefile 등 대용량 지리 데이터를 패키지에 포함. 선택적 다운로드나 캐싱 전략 필요
@@ -257,9 +342,15 @@ limitations under the License.
 - [ ] **메모리 사용량**: 전체 해상 네트워크를 메모리에 로드. 필요한 부분만 로드하는 최적화 고려
 
 ### 6. 사용자 경험 개선
-- [ ] **진행 상황 표시**: 긴 경로 계산 시 진행 상황을 표시하는 기능 부재
-- [ ] **에러 복구**: 네트워크 오류나 부분적 실패 시 복구 메커니즘 부족
-- [ ] **CLI 인터페이스**: 프로그래밍 API만 제공. 간단한 CLI 도구 추가 고려
+- [x] **진행 상황 표시**: 긴 경로 계산 시 진행 상황을 표시하는 기능 부재
+  - ProgressCallback 시스템 구현 완료
+  - SimpleProgressCallback, FunctionProgressCallback 제공
+  - 모든 주요 계산 단계에 대한 상세 진행 상황 추적
+- [x] **에러 복구**: 네트워크 오류나 부분적 실패 시 복구 메커니즘 부족
+  - RetryHandler로 자동 재시도 메커니즘 구현
+  - 지수 백오프, 선형 백오프, 즉시 재시도 전략 지원
+  - ErrorRecoveryHandler로 종합적인 에러 복구 제공
+  - 설정 가능한 재시도 횟수 및 지연 시간
 
 ### 7. 보안 및 유효성 검사
 - [ ] **입력 검증 강화**: 좌표 범위 검증, GeoJSON 파일 검증 등 입력 유효성 검사 보강 필요

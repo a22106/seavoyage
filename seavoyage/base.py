@@ -132,6 +132,7 @@ def seavoyage(
     port_params: Optional[Dict[str, Any]] = None,
     P: Optional[Ports] = None,
     return_passages: bool = False,
+    progress_callback: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Calculate ship route (with custom restriction zone support)

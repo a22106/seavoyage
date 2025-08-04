@@ -35,12 +35,30 @@ from seavoyage.models import (
     RouteProperties,
     RouteGeometry
 )
+from seavoyage.enhanced_api import (
+    seavoyage_with_progress,
+    calculate_sea_route_with_recovery
+)
+from seavoyage.callbacks import (
+    ProgressCallback,
+    SimpleProgressCallback,
+    FunctionProgressCallback,
+    ProgressInfo,
+    ProgressStage
+)
+from seavoyage.retry import (
+    RetryConfig,
+    RetryStrategy
+)
 
 __all__ = (
     [MNetwork]+
     [seavoyage, custom_seavoyage]+
     [calculate_sea_route, calculate_sea_route_simple, get_quick_route]+
+    [seavoyage_with_progress, calculate_sea_route_with_recovery]+
     [RouteConfig, NetworkConfig, RouteCoordinates, RouteResult, RouteProperties, RouteGeometry]+
+    [ProgressCallback, SimpleProgressCallback, FunctionProgressCallback, ProgressInfo, ProgressStage]+
+    [RetryConfig, RetryStrategy]+
     [*utils.__all__]+
     [PACKAGE_ROOT, MARNET_DIR, DATA_DIR]+
     [constants]+

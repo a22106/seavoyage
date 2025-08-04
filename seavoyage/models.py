@@ -2,7 +2,7 @@
 Data models for seavoyage API
 """
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple, Optional, Union, Any, Literal
+from typing import Dict, List, Tuple, Optional, Union, Any, Literal, Callable
 from searoute.classes.passages import Passage
 from searoute.classes.marnet import Marnet
 from searoute.classes.ports import Ports
@@ -18,6 +18,11 @@ class RouteConfig:
     include_ports: bool = False
     port_params: Optional[Dict[str, Any]] = None
     return_passages: bool = False
+    progress_callback: Optional[Callable[['ProgressInfo'], None]] = None
+    enable_retry: bool = True
+    max_retry_attempts: int = 3
+    retry_delay: float = 1.0
+    enable_partial_routes: bool = True
 
 
 @dataclass
