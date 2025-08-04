@@ -1,12 +1,9 @@
-geojson>=3.2.0
-networkx>=3.4.2
-searoute>=1.4.3
 folium>=0.19.5
-shapely>=2.1.0
+geojson>=3.2.0
 geopandas>=1.0.1
+haversine>=2.9.0
+networkx>=3.4.2
 scikit-learn>=1.6.1
 scipy>=1.13.0
-
-# Read the docs
-myst-parser>=4.0.0
-sphinx_rtd_theme>=3.0.2
+searoute>=1.4.3
+shapely>=2.1.0

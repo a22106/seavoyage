@@ -9,6 +9,9 @@ keywords = ["sea route", "shortest path", "graph", "geojson", "networkx"]
 authors = [
     {name = "Byeonggong Hwang", email = "bk22106@gmail.com"}
 ]
+maintainers = [
+    {name = "Byeonggong Hwang", email = "bk22106@gmail.com"}
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -17,8 +20,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -29,19 +30,38 @@ dependencies = [
     "geojson>=3.2.0",
     "geopandas>=1.0.1",
     "haversine>=2.9.0",
-    "myst-parser>=4.0.0",
     "networkx>=3.4.2",
-    "pytest>=8.3.5",
-    "ruff>=0.11.7",
     "scikit-learn>=1.6.1",
     "scipy>=1.13.0",
     "searoute>=1.4.3",
     "shapely>=2.1.0",
-    "sphinx-rtd-theme>=3.0.2",
 ]
 
 [project.urls]
 Homepage = "https://github.com/a22106/seavoyage"
+Repository = "https://github.com/a22106/seavoyage"
+Issues = "https://github.com/a22106/seavoyage/issues"
+Documentation = "https://seavoyage.readthedocs.io"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "ruff>=0.11.7",
+    "pre-commit>=3.0.0",
+]
+docs = [
+    "myst-parser>=4.0.0",
+    "sphinx-rtd-theme>=3.0.2",
+    "sphinx>=7.0.0",
+]
+test = [
+    "pytest>=8.3.5",
+    "pytest-cov>=4.0.0",
+]
+lint = [
+    "ruff>=0.11.7",
+    "mypy>=1.0.0",
+]
 
 [build-system]
 requires = ["setuptools>=42", "wheel"]
@@ -66,9 +86,34 @@ python_files = ["test_*.py", "*_test.py"]
 testpaths = ["tests"]
 addopts = [
     "--strict-markers",
+    "--cov=seavoyage",
+    "--cov-report=term-missing",
 ]
 
-[dependency-groups]
-dev = [
-    "pytest>=8.3.5",
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
 ]
+ignore = [
+    "E501", # line too long, handled by formatter
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

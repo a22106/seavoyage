@@ -20,13 +20,26 @@ pip install seavoyage
 ```
 
 ## 개발 모드 설치
-개발 중에 테스트를 쉽게 실행하려면 다음 명령으로 패키지를 개발 모드로 설치하세요:
+
+이 프로젝트는 **uv**를 사용한 현대적인 Python 패키지 관리를 권장합니다:
 
 ```bash
+# uv를 사용한 개발 환경 설정 (권장)
+uv sync
+uv pip install -e .
+
+# 또는 기존 pip 방식
 pip install -e .
 ```
 
-이렇게 하면 `pytest.ps1` 스크립트를 사용하지 않고도 바로 `pytest` 명령을 실행할 수 있습니다.
+### 개발 의존성 설치
+```bash
+# uv 사용 (권장)
+uv sync --group dev --group test --group lint
+
+# 또는 pip 사용
+pip install -e ".[dev]"
+```
 
 ## 빠른 시작
 
@@ -122,13 +135,13 @@ limitations under the License.
 ## 개선 과제 및 문제점
 
 ### 1. 패키지 설정 및 구조 개선
-- [ ] **Python 버전 지원 불일치**: `pyproject.toml`에서 `requires-python = ">=3.11"`로 설정되어 있으나, classifiers에는 Python 3.9, 3.10도 포함되어 있음. 실제 지원 버전 확인 및 일치 필요
-- [ ] **개발 의존성 분리 부족**: `requirements.txt`와 `pyproject.toml`에 개발/테스트용 패키지(pytest, ruff, sphinx 등)가 일반 의존성으로 포함됨. `dev-dependencies` 또는 `extras_require` 사용 권장
-- [ ] **패키지 메타데이터 보완**: `pyproject.toml`에 maintainers, repository, documentation URL 등 추가 정보 필요
+- [x] **Python 버전 지원 불일치**: `pyproject.toml`에서 `requires-python = ">=3.11"`로 설정되어 있으나, classifiers에는 Python 3.9, 3.10도 포함되어 있음. 실제 지원 버전 확인 및 일치 필요
+- [x] **개발 의존성 분리 부족**: `requirements.txt`와 `pyproject.toml`에 개발/테스트용 패키지(pytest, ruff, sphinx 등)가 일반 의존성으로 포함됨. `dev-dependencies` 또는 `extras_require` 사용 권장
+- [x] **패키지 메타데이터 보완**: `pyproject.toml`에 maintainers, repository, documentation URL 등 추가 정보 필요
 
 ### 2. 코드 품질 및 아키텍처
 - [ ] **타입 힌트 일관성**: 일부 함수에만 타입 힌트가 적용됨. 전체 코드베이스에 일관된 타입 힌트 적용 필요
-- [ ] **에러 메시지 국제화**: 예외 메시지가 한글로 하드코딩됨. i18n 지원 또는 영어 메시지로 통일 필요
+- [ ] **에러 메시지 국제화**: 예외 메시지가 한글로 하드코딩됨. 영어 메시지로 통일 필요
 - [ ] **전역 상태 관리**: `_DEFAULT_MNETWORK` 같은 전역 변수 사용. 의존성 주입 패턴 고려
 - [ ] **로깅 레벨 관리**: 로깅 설정이 분산되어 있음. 중앙화된 로깅 설정 필요
 
