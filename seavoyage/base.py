@@ -1,3 +1,4 @@
+from typing import Dict, List, Tuple, Optional, Union, Any
 from haversine import Unit
 from searoute import searoute, setup_M
 from searoute.classes.passages import Passage
@@ -11,9 +12,18 @@ from seavoyage.classes.m_network import MNetwork
 from seavoyage.utils.coordinates import decdeg_to_degmin
 from seavoyage.utils.route_utils import calculate_route_length
 
-_DEFAULT_MNETWORK = MNetwork.from_marnet(setup_M())
+_DEFAULT_MNETWORK: Optional[MNetwork] = None
 
-units_map = {
+
+def _get_default_network() -> MNetwork:
+    """Get or create the default maritime network."""
+    global _DEFAULT_MNETWORK
+    if _DEFAULT_MNETWORK is None:
+        _DEFAULT_MNETWORK = MNetwork.from_marnet(setup_M())
+    return _DEFAULT_MNETWORK
+
+
+units_map: Dict[str, Unit] = {
     "km": Unit.KILOMETERS,
     "m": Unit.METERS,
     "mi": Unit.MILES,
@@ -24,35 +34,41 @@ units_map = {
     "deg": Unit.DEGREES,
 }
 
-# 원본 seavoyage 함수
-def _original_seavoyage(start: tuple[float, float], end: tuple[float, float], **kwargs):
+def _original_seavoyage(start: Tuple[float, float], end: Tuple[float, float], **kwargs) -> Dict[str, Any]:
     """
-    선박 경로 계산 (내부용)
+    Calculate ship route (internal use)
 
     Args:
-        start (tuple[float, float]): 출발 좌표
-        end (tuple[float, float]): 종점 좌표
+        start: Starting coordinates (longitude, latitude)
+        end: Destination coordinates (longitude, latitude)
+        **kwargs: Additional arguments
 
     Returns:
-        geojson.FeatureCollection(dict): 경로 정보
+        dict: Route information as GeoJSON Feature
     """
     if not kwargs.get("M"):
         kwargs["M"] = setup_M()
     route = searoute(start, end, **kwargs)
     
-    # 단위 별 length property 계산 
-    units = kwargs.get("units", "nm")
-    unit = units_map[units]
+    # Calculate length property by units
+    units: str = kwargs.get("units", "nm")
+    unit: Unit = units_map[units]
     
-    # 총 거리 계산
-    total_distance = calculate_route_length(route, unit)
+    # Calculate total distance
+    total_distance: float = calculate_route_length(route, unit)
     
     route['properties']['length'] = total_distance
     return route
 
-def _classify_restrictions(restrictions):
+def _classify_restrictions(restrictions: List[str]) -> Tuple[List[CustomRestriction], List[Passage], List[str]]:
     """
-    제한 구역 이름 리스트를 커스텀/기본/알 수 없음으로 분류
+    Classify restriction zone name list into custom/default/unknown.
+    
+    Args:
+        restrictions: List of restriction names
+        
+    Returns:
+        Tuple of (custom_restrictions, default_passages, unknown_restrictions)
     """
     custom = []
     default = []
@@ -60,89 +76,103 @@ def _classify_restrictions(restrictions):
     for r in restrictions:
         custom_restriction = get_custom_restriction(r)
         if custom_restriction:
-            logger.debug(f"커스텀 제한 구역 '{r}' 발견")
+            logger.debug(f"Found custom restriction zone '{r}'")
             custom.append(custom_restriction)
         elif hasattr(Passage, r):
-            logger.debug(f"기본 제한 구역 '{r}' 발견")
+            logger.debug(f"Found default restriction zone '{r}'")
             default.append(getattr(Passage, r))
         else:
-            logger.warning(f"알 수 없는 제한 구역: '{r}'")
+            logger.warning(f"Unknown restriction zone: '{r}'")
             unknown.append(r)
     return custom, default, unknown
 
 
-def _apply_restrictions_to_network(mnetwork: MNetwork, custom_restrictions:list[CustomRestriction], default_passages:list[Passage]):
+def _apply_restrictions_to_network(
+    mnetwork: MNetwork, 
+    custom_restrictions: List[CustomRestriction], 
+    default_passages: List[Passage]
+) -> None:
     """
-    네트워크 객체에 제한 구역을 적용
+    Apply restriction zones to network object.
+    
+    Args:
+        mnetwork: Maritime network object
+        custom_restrictions: List of custom restrictions
+        default_passages: List of default passages
     """
     if not isinstance(mnetwork, MNetwork | Marnet):
         raise ValueError(f"mnetwork must be an instance of MNetwork, not {type(mnetwork)}: {mnetwork}")
     
-    # 기존 제한 구역을 덮어쓰지 않고 새로운 제한 구역만 추가
+    # Add new restriction zones without overwriting existing ones
     for passage in default_passages:
         if passage not in mnetwork.restrictions:
             mnetwork.restrictions.append(passage)
     
-    # 커스텀 제한 구역 추가
+    # Add custom restriction zones
     for restriction in custom_restrictions:
         mnetwork.add_restriction(restriction)
 
 
-def seavoyage(start: tuple[float, float], end: tuple[float, float], *,
-              restrictions: list[str] | None = None,
-              M: MNetwork | Marnet | None = None,
-              units: str = "nm",
-              speed_knot: float = 10,
-              append_orig_dest: bool = False,
-              include_ports: bool = False,
-              port_params: dict| None = None,
-              P: Ports | None = None,
-              return_passages: bool = False,
-              ) -> dict:
+def seavoyage(
+    start: Tuple[float, float], 
+    end: Tuple[float, float], 
+    *,
+    restrictions: Optional[List[str]] = None,
+    M: Optional[Union[MNetwork, Marnet]] = None,
+    units: str = "nm",
+    speed_knot: float = 10,
+    append_orig_dest: bool = False,
+    include_ports: bool = False,
+    port_params: Optional[Dict[str, Any]] = None,
+    P: Optional[Ports] = None,
+    return_passages: bool = False,
+) -> Dict[str, Any]:
     """
-    선박 경로 계산 (커스텀 제한 구역 지원)
+    Calculate ship route (with custom restriction zone support)
 
     Args:
-        start (tuple[float, float]): 출발 좌표
-        end (tuple[float, float]): 종점 좌표
-        restrictions (list[str], optional): 제한 구역 목록
-        M (MNetwork | Marnet, optional): 해상 네트워크 객체
-        units (str): 거리 단위 (기본값: "nm")
-        speed_knot (float): 선박 속도 (기본값: 10 노트)
-        append_orig_dest (bool): 출발지/목적지를 경로에 추가 여부 (기본값: False)
-        include_ports (bool): 항구 포함 여부 (기본값: False)
-        port_params (dict, optional): 항구 관련 설정
-        P (Ports, optional): 항구 네트워크 객체
-        return_passages (bool): 통과한 항로 반환 여부 (기본값: False)
+        start: Starting coordinates (longitude, latitude)
+        end: Destination coordinates (longitude, latitude)
+        restrictions: List of restriction zones
+        M: Maritime network object
+        units: Distance unit (default: "nm")
+        speed_knot: Ship speed (default: 10 knots)
+        append_orig_dest: Whether to append origin/destination to route (default: False)
+        include_ports: Whether to include ports (default: False)
+        port_params: Port-related settings
+        P: Port network object
+        return_passages: Whether to return passages crossed (default: False)
 
     Returns:
-        dict: 경로 정보 (GeoJSON Feature)
+        dict: Route information (GeoJSON Feature)
         
     Raises:
-        RouteError: 경로 계산 중 오류가 발생한 경우
-        StartInRestrictionError: 출발점이 제한 구역 내에 있는 경우
-        DestinationInRestrictionError: 도착점이 제한 구역 내에 있는 경우
-        UnreachableDestinationError: 제한 구역으로 인해 목적지에 도달할 수 없는 경우
-        IsolatedOriginError: 출발점이 제한 구역에 의해 고립되어 있는 경우
+        RouteError: When error occurs during route calculation
+        StartInRestrictionError: When starting point is within a restriction zone
+        DestinationInRestrictionError: When destination is within a restriction zone
+        UnreachableDestinationError: When destination cannot be reached due to restriction zones
+        IsolatedOriginError: When starting point is isolated by restriction zones
     """
-    mnetwork: MNetwork = M or _DEFAULT_MNETWORK
-    mnetwork.reset_restrictions()  # 제한 구역 초기화
-    custom_restrictions, default_passages, unknown_restrictions = [], [], []
+    mnetwork: MNetwork = M or _get_default_network()
+    mnetwork.reset_restrictions()  # Reset restriction zones
+    custom_restrictions: List[CustomRestriction] = []
+    default_passages: List[Passage] = []
+    unknown_restrictions: List[str] = []
     
     if restrictions is None:
         processed_restrictions = [Passage.northwest]
     else:
         if not isinstance(restrictions, list):
             raise ValueError("restrictions must be a list")
-        logger.debug(f"요청된 제한 구역: {restrictions}")
+        logger.debug(f"Requested restriction zones: {restrictions}")
         processed_restrictions = restrictions + [Passage.northwest]
     
-    # 제한 구역 분류 (항상 수행)
+    # Classify restriction zones (always performed)
     custom_restrictions, default_passages, unknown_restrictions = _classify_restrictions(processed_restrictions)
     
 
     if start == end:
-        # 동일한 포인트 입력 시, 길이 0의 경로 반환
+        # Return zero-length route when start and end are identical
         return {
             "geometry": {
                 "coordinates": [list(start)],
@@ -157,15 +187,15 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], *,
         }
 
 
-    # 네트워크에 제한 구역을 적용
+    # Apply restriction zones to network
     _apply_restrictions_to_network(mnetwork, custom_restrictions, default_passages)
 
-    logger.debug(f"등록된 제한 구역: {list_custom_restrictions()}")
-    logger.debug(f"적용된 기본 제한 구역: {mnetwork.restrictions}")
-    logger.debug(f"적용된 커스텀 제한 구역: {list(mnetwork.custom_restrictions.keys())}")
+    logger.debug(f"Registered restriction zones: {list_custom_restrictions()}")
+    logger.debug(f"Applied default restriction zones: {mnetwork.restrictions}")
+    logger.debug(f"Applied custom restriction zones: {list(mnetwork.custom_restrictions.keys())}")
 
-    # kwargs 딕셔너리 구성
-    kwargs = {
+    # Construct kwargs dictionary
+    kwargs: Dict[str, Any] = {
         "M": mnetwork,
         "units": units,
         "speed_knot": speed_knot,
@@ -175,46 +205,46 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], *,
         "return_passages": return_passages
     }
     
-    # 선택적 파라미터들 추가
+    # Add optional parameters
     if port_params is not None:
         kwargs["port_params"] = port_params
     if P is not None:
         kwargs["P"] = P
     
     try:
-        # 고립 점 확인 로직: 먼저 출발점이 고립되었는지 확인
-        logger.debug(f"출발점 {start}와 목적지 {end} 사이의 경로 계산 시작")
+        # Check isolated points: First check if starting point is isolated
+        logger.debug(f"Starting route calculation from {start} to {end}")
         
-        # 출발점이 제한 구역 내에 있는지 확인
+        # Check if starting point is within restriction zone
         is_origin_restricted, origin_restriction = mnetwork.is_point_in_restriction(start)
         if is_origin_restricted:
-            logger.error(f"출발점 {decdeg_to_degmin(start)}이 제한 구역 '{origin_restriction}' 내에 있습니다")
+            logger.error(f"Starting point {decdeg_to_degmin(start)} is within restriction zone '{origin_restriction}'")
             raise StartInRestrictionError(start, origin_restriction)
             
-        # 도착점이 제한 구역 내에 있는지 확인
+        # Check if destination is within restriction zone
         is_dest_restricted, dest_restriction = mnetwork.is_point_in_restriction(end)
         if is_dest_restricted:
-            logger.error(f"도착점 {decdeg_to_degmin(end)}이 제한 구역 '{dest_restriction}' 내에 있습니다")
+            logger.error(f"Destination {decdeg_to_degmin(end)} is within restriction zone '{dest_restriction}'")
             raise DestinationInRestrictionError(end, dest_restriction)
         
-        # 출발점과 가장 가까운 네트워크 노드 찾기
+        # Find the nearest network node to starting point
         origin_node = mnetwork.kdtree.query(start)
         
-        # 출발점과 KDTree로 찾은 노드 사이의 선분이 제한 구역을 통과하는지 확인
-        if start != origin_node:  # 출발점과 네트워크 노드가 다른 경우
+        # Check if line segment between starting point and nearest node crosses restriction zones
+        if start != origin_node:  # If starting point differs from network node
             from shapely import LineString
             
             line_to_origin = LineString([start, origin_node])
-            logger.debug(f"출발점 {start}에서 가장 가까운 네트워크 노드: {origin_node}")
+            logger.debug(f"Nearest network node to starting point {start}: {origin_node}")
             
-            # 커스텀 제한 구역 확인
+            # Check custom restriction zones
             for name, restriction in mnetwork.custom_restrictions.items():
                 if restriction.polygon.intersects(line_to_origin):
-                    logger.error(f"출발점 {start}에서 가장 가까운 노드 {origin_node}까지의 경로가 제한 구역 '{name}'와 교차합니다")
+                    logger.error(f"Path from starting point {start} to nearest node {origin_node} intersects with restriction zone '{name}'")
                     raise IsolatedOriginError(start, [name])
         
-        # 출발지 노드가 고립되었는지 확인
-        is_isolated = True
+        # Check if origin node is isolated
+        is_isolated: bool = True
         
         for neighbor in mnetwork.neighbors(origin_node):
             edge_data = mnetwork.get_edge_data(origin_node, neighbor)
@@ -226,50 +256,56 @@ def seavoyage(start: tuple[float, float], end: tuple[float, float], *,
             restriction_names = list(mnetwork.custom_restrictions.keys())
             if mnetwork.restrictions:
                 restriction_names.extend([str(r) for r in mnetwork.restrictions])
-            logger.error(f"출발점 {start}이 제한 구역에 의해 고립되어 있습니다: {restriction_names}")
+            logger.error(f"Starting point {start} is isolated by restriction zones: {restriction_names}")
             raise IsolatedOriginError(start, restriction_names)
             
         return _original_seavoyage(start, end, **kwargs)
         
     except (RouteError, IsolatedOriginError) as e:
-        # 경로 관련 예외 처리
-        logger.error(f"경로 오류: {str(e)}")
+        # Handle route-related exceptions
+        logger.error(f"Route error: {str(e)}")
         raise
     except Exception as e:
-        # 기타 예외는 원래 예외를 그대로 전달
-        logger.error(f"예상치 못한 오류 발생: {str(e)}")
+        # Pass through other exceptions as-is
+        logger.error(f"Unexpected error occurred: {str(e)}")
         raise
 
-# 이전 버전과의 호환성을 위한 함수
-def custom_seavoyage(start: tuple[float, float], end: tuple[float, float], custom_restrictions=None, default_restrictions=None, **kwargs):
+# Function for backward compatibility
+def custom_seavoyage(
+    start: Tuple[float, float], 
+    end: Tuple[float, float], 
+    custom_restrictions: Optional[List[str]] = None, 
+    default_restrictions: Optional[List[Union[str, Passage]]] = None, 
+    **kwargs
+) -> Dict[str, Any]:
     """
-    커스텀 제한 구역을 고려한 선박 경로 계산
+    Calculate ship route considering custom restriction zones.
     
     Args:
-        start: 출발 좌표 (경도, 위도)
-        end: 목적지 좌표 (경도, 위도)
-        custom_restrictions: 커스텀 제한 구역 이름 목록
-        default_restrictions: 기본 제한 구역 목록 (Passage 클래스의 상수들)
-        **kwargs: seavoyage에 전달할 추가 인자
+        start: Starting coordinates (longitude, latitude)
+        end: Destination coordinates (longitude, latitude)
+        custom_restrictions: List of custom restriction zone names
+        default_restrictions: List of default restriction zones (Passage class constants)
+        **kwargs: Additional arguments to pass to seavoyage
     Returns:
-        dict: 경로 정보 (GeoJSON Feature)
+        dict: Route information (GeoJSON Feature)
         
     Raises:
-        RouteError: 경로 계산 중 오류가 발생한 경우
-        IsolatedOriginError: 출발점이 제한 구역에 의해 고립되어 있는 경우
+        RouteError: When error occurs during route calculation
+        IsolatedOriginError: When starting point is isolated by restriction zones
     """
-    restrictions = []
+    restrictions: List[str] = []
     
-    # 기본 제한 구역 추가
+    # Add default restriction zones
     if default_restrictions:
         restrictions.extend(default_restrictions)
     
-    # 커스텀 제한 구역 추가
+    # Add custom restriction zones
     if custom_restrictions:
         restrictions.extend(custom_restrictions)
     
-    # kwargs에서 seavoyage의 새로운 parameter들 추출
-    seavoyage_params = {
+    # Extract new seavoyage parameters from kwargs
+    seavoyage_params: Dict[str, Any] = {
         'M': kwargs.pop('M', None),
         'units': kwargs.pop('units', 'nm'),
         'speed_knot': kwargs.pop('speed_knot', 10),
@@ -280,11 +316,11 @@ def custom_seavoyage(start: tuple[float, float], end: tuple[float, float], custo
         'return_passages': kwargs.pop('return_passages', False)
     }
     
-    # restrictions 추가 (빈 리스트가 아닌 경우에만)
+    # Add restrictions (only if not empty list)
     if restrictions:
         seavoyage_params['restrictions'] = restrictions
     
-    # None 값인 선택적 parameter들 제거
+    # Remove optional parameters with None values
     seavoyage_params = {k: v for k, v in seavoyage_params.items() if v is not None}
     
     return seavoyage(start, end, **seavoyage_params)
