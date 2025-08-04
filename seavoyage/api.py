@@ -21,31 +21,61 @@ def calculate_sea_route(
     route_config: Optional[RouteConfig] = None,
     network_config: Optional[NetworkConfig] = None
 ) -> RouteResult:
-    """
-    Calculate optimal sea route between two points with improved API
+    """Calculate optimal sea route between two points with improved API.
     
-    Args:
-        coordinates: Start and end coordinates for the route
-        route_config: Configuration for route calculation (units, speed, restrictions, etc.)
-        network_config: Configuration for maritime network (resolution, custom network, etc.)
+    This function provides a clean, type-safe interface for calculating maritime
+    routes with full control over route and network configuration.
+    
+    Parameters
+    ----------
+    coordinates : RouteCoordinates
+        Start and end coordinates for the route. Coordinates should be
+        provided as (longitude, latitude) tuples.
+    route_config : RouteConfig, optional
+        Configuration for route calculation including units, speed, restrictions,
+        and other route-specific parameters. If None, defaults are used.
+    network_config : NetworkConfig, optional
+        Configuration for maritime network including resolution and custom
+        network options. If None, default 50km network is used.
         
-    Returns:
-        RouteResult: Calculated route with geometry and properties
+    Returns
+    -------
+    RouteResult
+        Calculated route containing:
+        - geometry: LineString coordinates of the route
+        - properties: Distance, duration, and other route metadata
         
-    Raises:
-        RouteError: When route cannot be calculated
-        StartInRestrictionError: When start point is in a restriction zone
-        DestinationInRestrictionError: When end point is in a restriction zone
-        IsolatedOriginError: When start point is isolated by restrictions
+    Raises
+    ------
+    RouteError
+        When route cannot be calculated between the given points.
+    StartInRestrictionError
+        When start point is located within a restriction zone.
+    DestinationInRestrictionError
+        When end point is located within a restriction zone.
+    IsolatedOriginError
+        When start point is isolated by surrounding restrictions.
         
-    Example:
-        >>> coords = RouteCoordinates(
-        ...     start=(129.17, 35.075),
-        ...     end=(-4.158, 44.644)
-        ... )
-        >>> config = RouteConfig(units="km", speed_knot=12)
-        >>> route = calculate_sea_route(coords, config)
-        >>> print(f"Distance: {route.properties.length} km")
+    Examples
+    --------
+    >>> coords = RouteCoordinates(
+    ...     start=(129.17, 35.075),  # Busan
+    ...     end=(4.158, 51.921)      # Rotterdam
+    ... )
+    >>> config = RouteConfig(units="km", speed_knot=12)
+    >>> route = calculate_sea_route(coords, config)
+    >>> print(f"Distance: {route.properties.length:.1f} km")
+    
+    Notes
+    -----
+    The function uses pre-computed maritime networks at various resolutions
+    (5km to 100km) for efficient pathfinding. Custom restriction zones can
+    be applied to avoid specific areas.
+    
+    See Also
+    --------
+    calculate_sea_route_simple : Simplified interface for basic use cases
+    get_quick_route : Get basic route information quickly
     """
     # Use default configs if not provided
     if route_config is None:
@@ -91,28 +121,52 @@ def calculate_sea_route_simple(
     network_resolution: Optional[str] = None,
     units: str = "nm"
 ) -> RouteResult:
-    """
-    Simplified API for calculating sea routes
+    """Simplified API for calculating sea routes.
     
-    Args:
-        start: Starting coordinates (longitude, latitude)
-        end: Destination coordinates (longitude, latitude) 
-        restrictions: List of restriction zones to apply
-        network_resolution: Network resolution ("5km", "10km", "20km", "50km", "100km")
-        units: Distance units ("nm", "km", "m", "mi", etc.)
+    This function provides a streamlined interface for common route calculation
+    use cases without needing to create configuration objects.
+    
+    Parameters
+    ----------
+    start : tuple[float, float]
+        Starting coordinates as (longitude, latitude).
+    end : tuple[float, float]
+        Destination coordinates as (longitude, latitude).
+    restrictions : list[str], optional
+        List of restriction zone names to apply. Common values include
+        "suez", "panama", "northwest" for built-in passages, or custom
+        restriction names registered via register_custom_restriction().
+    network_resolution : str, optional
+        Network resolution to use. Valid values are "5km", "10km", "20km",
+        "50km", "100km". Higher resolution provides more accurate routes
+        but slower computation. Default is "50km".
+    units : str, default="nm"
+        Distance units for the result. Common values:
+        - "nm": nautical miles
+        - "km": kilometers
+        - "m": meters
+        - "mi": miles
         
-    Returns:
-        RouteResult: Calculated route
+    Returns
+    -------
+    RouteResult
+        Calculated route with distance in specified units.
         
-    Example:
-        >>> route = calculate_sea_route_simple(
-        ...     start=(129.17, 35.075),
-        ...     end=(-4.158, 44.644),
-        ...     restrictions=["suez", "panama"],
-        ...     network_resolution="10km",
-        ...     units="km"
-        ... )
-        >>> print(f"Distance: {route.properties.length} km")
+    Examples
+    --------
+    >>> route = calculate_sea_route_simple(
+    ...     start=(129.17, 35.075),  # Busan
+    ...     end=(4.158, 51.921),     # Rotterdam
+    ...     restrictions=["suez"],
+    ...     network_resolution="10km",
+    ...     units="km"
+    ... )
+    >>> print(f"Distance: {route.properties.length:.1f} km")
+    
+    See Also
+    --------
+    calculate_sea_route : Full API with configuration objects
+    get_quick_route : Get basic route information only
     """
     coords = RouteCoordinates(start=start, end=end)
     route_config = RouteConfig(units=units, restrictions=restrictions)
@@ -125,23 +179,49 @@ def get_quick_route(
     start: Tuple[float, float],
     end: Tuple[float, float]
 ) -> Dict[str, Union[float, str]]:
-    """
-    Get quick route information with minimal configuration
+    """Get quick route information with minimal configuration.
     
-    Args:
-        start: Starting coordinates (longitude, latitude)
-        end: Destination coordinates (longitude, latitude)
+    This is the simplest way to get basic routing information between two
+    points without any configuration. Useful for quick distance/time estimates.
+    
+    Parameters
+    ----------
+    start : tuple[float, float]
+        Starting coordinates as (longitude, latitude).
+    end : tuple[float, float]
+        Destination coordinates as (longitude, latitude).
         
-    Returns:
-        Dictionary with basic route information:
-        - distance_nm: Distance in nautical miles
-        - distance_km: Distance in kilometers  
-        - duration_hours: Estimated duration at 10 knots
-        - waypoints_count: Number of waypoints in route
+    Returns
+    -------
+    dict
+        Dictionary containing:
+        - distance_nm : float
+            Distance in nautical miles
+        - distance_km : float
+            Distance in kilometers  
+        - duration_hours : float
+            Estimated duration at 10 knots
+        - waypoints_count : int
+            Number of waypoints in the calculated route
         
-    Example:
-        >>> info = get_quick_route((129.17, 35.075), (-4.158, 44.644))
-        >>> print(f"Distance: {info['distance_nm']:.1f} nm")
+    Examples
+    --------
+    >>> info = get_quick_route(
+    ...     (129.17, 35.075),  # Busan
+    ...     (4.158, 51.921)    # Rotterdam
+    ... )
+    >>> print(f"Distance: {info['distance_nm']:.1f} nm")
+    >>> print(f"Duration: {info['duration_hours']:.1f} hours")
+    
+    Notes
+    -----
+    This function uses the default 50km network resolution and assumes
+    a vessel speed of 10 knots for duration calculation.
+    
+    See Also
+    --------
+    calculate_sea_route_simple : Calculate full route with simple parameters
+    calculate_sea_route : Full API with all configuration options
     """
     route = calculate_sea_route_simple(start, end, units="nm")
     
@@ -157,7 +237,18 @@ def get_quick_route(
 
 
 def _prepare_maritime_network(config: NetworkConfig) -> Optional[MNetwork]:
-    """Prepare maritime network based on configuration"""
+    """Prepare maritime network based on configuration.
+    
+    Parameters
+    ----------
+    config : NetworkConfig
+        Network configuration specifying resolution or custom network.
+        
+    Returns
+    -------
+    MNetwork or None
+        Maritime network instance or None to use default.
+    """
     # If custom network provided, use it
     if config.maritime_network is not None:
         return config.maritime_network

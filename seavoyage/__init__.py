@@ -12,7 +12,8 @@ from seavoyage.modules.restriction import (
     register_custom_restriction, 
     get_custom_restriction, 
     list_custom_restrictions,
-    reset_custom_restrictions
+    reset_custom_restrictions,
+    clear_custom_restrictions
 )
 from seavoyage.exceptions import (
     RouteError,
@@ -43,6 +44,6 @@ __all__ = (
     [*utils.__all__]+
     [PACKAGE_ROOT, MARNET_DIR, DATA_DIR]+
     [constants]+
-    [register_custom_restriction, get_custom_restriction, list_custom_restrictions, reset_custom_restrictions]+
+    [register_custom_restriction, get_custom_restriction, list_custom_restrictions, reset_custom_restrictions, clear_custom_restrictions]+
     [RouteError, UnreachableDestinationError, StartInRestrictionError, DestinationInRestrictionError, IsolatedOriginError]
 )

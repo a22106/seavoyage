@@ -1,0 +1,50 @@
+name: Test README Examples
+
+on:
+  push:
+    paths:
+      - 'README.md'
+      - 'seavoyage/**'
+      - 'tests/test_readme_examples.py'
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'seavoyage/**'
+      - 'tests/test_readme_examples.py'
+
+jobs:
+  test-examples:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+    
+    - name: Install dependencies
+      run: |
+        uv sync --all-groups
+    
+    - name: Test README examples
+      run: |
+        uv run pytest tests/test_readme_examples.py -v
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-examples-${{ matrix.python-version }}
+        path: |
+          .coverage
+          htmlcov/

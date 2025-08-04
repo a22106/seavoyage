@@ -114,3 +114,28 @@ class IsolatedOriginError(RouteError):
                 message = f"Starting point {start} is isolated by restriction zones"
                 
         super().__init__(message)
+
+
+class SeavoyageError(Exception):
+    """Base exception for seavoyage package"""
+    pass
+
+
+class InvalidCoordinatesError(SeavoyageError):
+    """Exception raised when coordinates are invalid"""
+    pass
+
+
+class RouteNotFoundError(SeavoyageError):
+    """Exception raised when no route can be found"""
+    pass
+
+
+class NetworkError(SeavoyageError):
+    """Exception raised for network-related errors"""
+    pass
+
+
+class RestrictionError(SeavoyageError):
+    """Exception raised for restriction zone errors"""
+    pass

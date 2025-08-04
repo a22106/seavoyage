@@ -58,6 +58,12 @@ def _original_seavoyage(start: Tuple[float, float], end: Tuple[float, float], **
     total_distance: float = calculate_route_length(route, unit)
     
     route['properties']['length'] = total_distance
+    
+    # Add speed_knot if provided
+    speed_knot = kwargs.get("speed_knot")
+    if speed_knot is not None:
+        route['properties']['speed_knot'] = speed_knot
+    
     return route
 
 def _classify_restrictions(restrictions: List[str]) -> Tuple[List[CustomRestriction], List[Passage], List[str]]:

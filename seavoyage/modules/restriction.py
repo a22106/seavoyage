@@ -153,3 +153,9 @@ def reset_custom_restrictions() -> None:
     """
     _CUSTOM_RESTRICTION_REGISTRY.clear()
 
+def clear_custom_restrictions() -> None:
+    """
+    Clear all custom restriction zones (alias for reset_custom_restrictions).
+    """
+    reset_custom_restrictions()
+

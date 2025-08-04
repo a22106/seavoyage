@@ -48,6 +48,7 @@ class RouteProperties:
     duration_hours: float
     units: str
     passages_crossed: Optional[List[str]] = None
+    speed_knot: Optional[float] = None
     
     
 @dataclass 
@@ -77,7 +78,8 @@ class RouteResult:
             length=props_data["length"],
             duration_hours=props_data["duration_hours"],
             units=props_data["units"],
-            passages_crossed=props_data.get("passages_crossed")
+            passages_crossed=props_data.get("passages_crossed"),
+            speed_knot=props_data.get("speed_knot")
         )
         
         return cls(
@@ -103,5 +105,8 @@ class RouteResult:
         
         if self.properties.passages_crossed is not None:
             result["properties"]["passages_crossed"] = self.properties.passages_crossed
+        
+        if self.properties.speed_knot is not None:
+            result["properties"]["speed_knot"] = self.properties.speed_knot
             
         return result
