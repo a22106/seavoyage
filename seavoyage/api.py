@@ -8,7 +8,6 @@ from seavoyage.models import (
     RouteResult, RouteProperties, RouteGeometry
 )
 from seavoyage.base import seavoyage as _original_seavoyage
-from seavoyage.classes.m_network import MNetwork
 from seavoyage.utils.marine_network import (
     get_m_network_5km, get_m_network_10km, get_m_network_20km,
     get_m_network_50km, get_m_network_100km
@@ -22,6 +21,10 @@ from seavoyage.retry import (
     RetryStrategy, ErrorRecoveryResult
 )
 from seavoyage.log import logger
+from seavoyage.utils.validation import (
+    validate_coordinate_pair, validate_units, 
+    validate_speed, validate_network_resolution
+)
 
 
 def calculate_sea_route(
@@ -90,6 +93,15 @@ def calculate_sea_route(
         route_config = RouteConfig()
     if network_config is None:
         network_config = NetworkConfig()
+    
+    # Validate inputs
+    validate_coordinate_pair(coordinates.start, "start coordinate")
+    validate_coordinate_pair(coordinates.end, "end coordinate")
+    
+    if route_config.units:
+        route_config.units = validate_units(route_config.units)
+    if route_config.speed_knot:
+        route_config.speed_knot = validate_speed(route_config.speed_knot, "speed_knot")
         
     # Prepare maritime network
     maritime_network = _prepare_maritime_network(network_config)
@@ -176,6 +188,14 @@ def calculate_sea_route_simple(
     calculate_sea_route : Full API with configuration objects
     get_quick_route : Get basic route information only
     """
+    # Validate inputs
+    start = validate_coordinate_pair(start, "start coordinate")
+    end = validate_coordinate_pair(end, "end coordinate")
+    units = validate_units(units)
+    
+    if network_resolution is not None:
+        network_resolution = validate_network_resolution(network_resolution)
+    
     coords = RouteCoordinates(start=start, end=end)
     route_config = RouteConfig(units=units, restrictions=restrictions)
     network_config = NetworkConfig(resolution=network_resolution)
@@ -231,6 +251,10 @@ def get_quick_route(
     calculate_sea_route_simple : Calculate full route with simple parameters
     calculate_sea_route : Full API with all configuration options
     """
+    # Validate inputs
+    start = validate_coordinate_pair(start, "start coordinate")
+    end = validate_coordinate_pair(end, "end coordinate")
+    
     route = calculate_sea_route_simple(start, end, units="nm")
     
     # Calculate km distance as well

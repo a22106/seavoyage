@@ -4,14 +4,13 @@ Enhanced API with progress tracking and error recovery
 from typing import Dict, List, Tuple, Optional, Union, Any
 from seavoyage.classes.m_network import MNetwork
 from seavoyage.models import (
-    RouteConfig, NetworkConfig, RouteCoordinates, 
-    RouteResult, RouteProperties, RouteGeometry
+    RouteConfig, NetworkConfig, 
+    RouteCoordinates, RouteResult
 )
 from seavoyage.base import seavoyage as _original_seavoyage, _apply_restrictions_to_network, _classify_restrictions
 from seavoyage.base import _get_default_network
 from seavoyage.callbacks import (
-    ProgressTracker, ProgressStage, ProgressInfo,
-    SimpleProgressCallback, FunctionProgressCallback
+    ProgressTracker, ProgressStage
 )
 from seavoyage.retry import (
     RetryConfig, ErrorRecoveryHandler, RetryStrategy
@@ -21,10 +20,10 @@ from seavoyage.exceptions import (
     IsolatedOriginError, NetworkError
 )
 from seavoyage.utils.coordinates import decdeg_to_degmin
-from seavoyage.log import logger
 from haversine import Unit
 from searoute.classes.passages import Passage
 from searoute.classes.ports import Ports
+from seavoyage.utils.validation import validate_coordinate_pair, validate_units, validate_speed
 
 
 units_map: Dict[str, Unit] = {
@@ -95,6 +94,12 @@ def seavoyage_with_progress(
     dict
         Route information (GeoJSON Feature)
     """
+    # Validate inputs
+    start = validate_coordinate_pair(start, "start coordinate")
+    end = validate_coordinate_pair(end, "end coordinate")
+    units = validate_units(units)
+    speed_knot = validate_speed(speed_knot, "speed_knot")
+    
     # Setup progress tracker
     tracker = ProgressTracker(progress_callback)
     

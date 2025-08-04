@@ -11,6 +11,8 @@ from seavoyage.modules.restriction import CustomRestriction, get_custom_restrict
 from seavoyage.classes.m_network import MNetwork
 from seavoyage.utils.coordinates import decdeg_to_degmin
 from seavoyage.utils.route_utils import calculate_route_length
+from seavoyage.utils.validation import validate_coordinate_pair, validate_units, validate_speed
+from seavoyage.enhanced_api import units_map
 
 _DEFAULT_MNETWORK: Optional[MNetwork] = None
 
@@ -22,17 +24,6 @@ def _get_default_network() -> MNetwork:
         _DEFAULT_MNETWORK = MNetwork.from_marnet(setup_M())
     return _DEFAULT_MNETWORK
 
-
-units_map: Dict[str, Unit] = {
-    "km": Unit.KILOMETERS,
-    "m": Unit.METERS,
-    "mi": Unit.MILES,
-    "nm": Unit.NAUTICAL_MILES,
-    "ft": Unit.FEET,
-    "in": Unit.INCHES,
-    "rad": Unit.RADIANS,
-    "deg": Unit.DEGREES,
-}
 
 def _original_seavoyage(start: Tuple[float, float], end: Tuple[float, float], **kwargs) -> Dict[str, Any]:
     """
@@ -160,6 +151,12 @@ def seavoyage(
         UnreachableDestinationError: When destination cannot be reached due to restriction zones
         IsolatedOriginError: When starting point is isolated by restriction zones
     """
+    # Validate inputs
+    start = validate_coordinate_pair(start, "start coordinate")
+    end = validate_coordinate_pair(end, "end coordinate")
+    units = validate_units(units)
+    speed_knot = validate_speed(speed_knot, "speed_knot")
+    
     mnetwork: MNetwork = M or _get_default_network()
     mnetwork.reset_restrictions()  # Reset restriction zones
     custom_restrictions: List[CustomRestriction] = []

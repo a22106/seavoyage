@@ -16,6 +16,17 @@ from .marine_network import (
 from .route_utils import *
 from .shapely_utils import *
 from .shoreline import *
+from .validation import (
+    validate_coordinates,
+    validate_coordinate_pair,
+    validate_geojson_structure,
+    validate_geojson_geometry,
+    validate_geojson_file,
+    validate_restriction_zone,
+    validate_network_resolution,
+    validate_speed,
+    validate_units
+)
 
 
 __all__ = (
@@ -56,5 +67,17 @@ __all__ = (
     + [
         "ShorelineLevel",
         "shoreline",
+    ]
+    # validation
+    + [
+        "validate_coordinates",
+        "validate_coordinate_pair",
+        "validate_geojson_structure",
+        "validate_geojson_geometry",
+        "validate_geojson_file",
+        "validate_restriction_zone",
+        "validate_network_resolution",
+        "validate_speed",
+        "validate_units"
     ]
 )

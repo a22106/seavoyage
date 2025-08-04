@@ -1,9 +1,11 @@
 import os
 import json
-from typing import Optional, Dict, List, Tuple
+from pathlib import Path
+from typing import Optional, Dict, List, Tuple, Union
 from shapely.geometry import Polygon, MultiPolygon, Point
 
 from seavoyage.log import logger
+from seavoyage.utils.validation import validate_geojson_file, validate_restriction_zone
 
 # Global custom restriction registry
 _CUSTOM_RESTRICTION_REGISTRY: Dict[str, 'CustomRestriction'] = {}
@@ -90,40 +92,43 @@ class CustomRestriction:
             raise ValueError("Unsupported GeoJSON type. FeatureCollection or Feature required")
 
     @classmethod
-    def from_geojson_file(cls, name: str, file_path: str) -> 'CustomRestriction':
+    def from_geojson_file(cls, name: str, file_path: Union[str, Path]) -> 'CustomRestriction':
         """
         GeoJSON 파일에서 CustomRestriction 생성
         
         Args:
             name (str): 제한 구역 이름
-            file_path (str): GeoJSON 파일 경로
+            file_path (str or Path): GeoJSON 파일 경로
             
         Returns:
             CustomRestriction: 생성된 CustomRestriction 객체
         """
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
-            
-        with open(file_path, 'r', encoding='utf-8') as f:
-            geojson_data = json.load(f)
+        # Validate and load GeoJSON file
+        geojson_data = validate_geojson_file(file_path)
+        
+        # Validate it's a proper restriction zone
+        validate_restriction_zone(geojson_data)
             
         return cls.from_geojson(name, geojson_data)
 
 
-def register_custom_restriction(name: str, geojson_file_path: str) -> CustomRestriction:
+def register_custom_restriction(name: str, geojson_file_path: Union[str, Path]) -> CustomRestriction:
     """
     Register a custom restriction zone.
     
     Args:
         name (str): Restriction zone name
-        geojson_file_path (str): GeoJSON file path
+        geojson_file_path (str or Path): GeoJSON file path
     
     Returns:
         CustomRestriction: The registered restriction object
     """
-    restriction = CustomRestriction.from_geojson_file(name, geojson_file_path)
+    # Convert to Path for consistent handling
+    file_path = Path(geojson_file_path)
+    
+    restriction = CustomRestriction.from_geojson_file(name, file_path)
     _CUSTOM_RESTRICTION_REGISTRY[name] = restriction
-    logger.debug(f"Restriction zone registered successfully: {name}, file: {geojson_file_path}")
+    logger.debug(f"Restriction zone registered successfully: {name}, file: {file_path}")
     return restriction
 
 def get_custom_restriction(name: str) -> Optional[CustomRestriction]:
