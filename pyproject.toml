@@ -67,3 +67,8 @@ testpaths = ["tests"]
 addopts = [
     "--strict-markers",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+]

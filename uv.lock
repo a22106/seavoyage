@@ -711,7 +711,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/13/6b/4ce34317619515670
 
 [[package]]
 name = "seavoyage"
-version = "0.1.18"
+version = "0.1.20"
 source = { editable = "." }
 dependencies = [
     { name = "folium" },
@@ -727,6 +727,11 @@ dependencies = [
     { name = "searoute" },
     { name = "shapely" },
     { name = "sphinx-rtd-theme" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
 ]
 
 [package.metadata]
@@ -745,6 +750,9 @@ requires-dist = [
     { name = "shapely", specifier = ">=2.1.0" },
     { name = "sphinx-rtd-theme", specifier = ">=3.0.2" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.3.5" }]
 
 [[package]]
 name = "shapely"
