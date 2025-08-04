@@ -5,7 +5,9 @@ from searoute.utils import distance
 from seavoyage.classes.m_network import MNetwork
 from seavoyage.utils.geojson_utils import load_geojson
 from seavoyage.settings import MARNET_DIR, RESTRICTIONS_DIR
-from haversine import haversine
+from haversine import haversine, Unit
+from pathlib import Path
+from typing import Dict, Any, Optional, Union
 
 def make_searoute_nodes(nodes: list[tuple[float, float]]):
     searoute_nodes = {}
@@ -76,19 +78,43 @@ def make_searoute_edges(sr_nodes: dict[tuple[float, float], dict[str, float]], m
     
     return updated_edges
 
-def create_geojson_from_marnet(marnet: sr.Marnet, save=False) -> geojson.FeatureCollection:
+def marnet_to_geojson(marnet, save: bool = False, output_path: Optional[Union[str, Path]] = None) -> geojson.FeatureCollection:
     """
-    :param marnet: searoute.Marnet 객체
-    :param save: 파일 저장 여부
-    :return: geojson.FeatureCollection 객체
-    """
-    # validate marnet
-    if not isinstance(marnet, sr.Marnet):
-        raise ValueError("marnet must be a searoute.Marnet object")
+    Convert Marnet object to GeoJSON FeatureCollection.
     
-    features = []
+    Parameters
+    ----------
+    marnet : Marnet
+        Maritime network object
+    save : bool, optional
+        Whether to save the result to a file, by default False
+    output_path : str or Path, optional
+        Path to save the GeoJSON file. If save=True and output_path is None,
+        defaults to 'marnet_network.geojson' in current directory.
         
-    for u, v, attrs in marnet.edges(data=True): # Create a LineString from node u to node v  
+    Returns
+    -------
+    geojson.FeatureCollection
+        GeoJSON representation of the network
+        
+    Raises
+    ------
+    OSError
+        If file cannot be written
+    ValueError
+        If output path is invalid
+    """
+    features = []
+    
+    # Convert nodes to Point features
+    for node in marnet.nodes():
+        point = geojson.Point((node[0], node[1]))
+        properties = marnet.nodes[node] if node in marnet.nodes else {}
+        feature = geojson.Feature(geometry=point, properties=properties)
+        features.append(feature)
+        
+    # Convert edges to LineString features 
+    for u, v, attrs in marnet.edges(data=True):
         line = geojson.LineString([[u[0], u[1]], [v[0], v[1]]]) 
         feature = geojson.Feature(geometry=line, properties=attrs) 
         features.append(feature)
@@ -96,8 +122,21 @@ def create_geojson_from_marnet(marnet: sr.Marnet, save=False) -> geojson.Feature
     feature_collection = geojson.FeatureCollection(features)
 
     if save:
-        with open('marnet_network.geojson', 'w') as f: 
-            geojson.dump(feature_collection, f)
+        # Use pathlib for consistent file handling
+        if output_path is None:
+            output_path = Path.cwd() / 'marnet_network.geojson'
+        else:
+            output_path = Path(output_path)
+            
+        # Create parent directory if it doesn't exist
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            with open(output_path, 'w', encoding='utf-8') as f: 
+                geojson.dump(feature_collection, f, indent=2)
+            print(f"Network saved to: {output_path}")
+        except (OSError, PermissionError) as e:
+            raise OSError(f"Failed to save network to {output_path}: {e}") from e
         
     return feature_collection
 

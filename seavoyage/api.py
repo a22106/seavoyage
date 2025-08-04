@@ -23,7 +23,8 @@ from seavoyage.retry import (
 from seavoyage.log import logger
 from seavoyage.utils.validation import (
     validate_coordinate_pair, validate_units, 
-    validate_speed, validate_network_resolution
+    validate_speed, validate_network_resolution,
+    validate_restrictions_list, validate_network_object
 )
 
 
@@ -102,6 +103,14 @@ def calculate_sea_route(
         route_config.units = validate_units(route_config.units)
     if route_config.speed_knot:
         route_config.speed_knot = validate_speed(route_config.speed_knot, "speed_knot")
+    if route_config.restrictions is not None:
+        route_config.restrictions = validate_restrictions_list(route_config.restrictions)
+    
+    # Validate network configuration
+    if network_config.maritime_network is not None:
+        validate_network_object(network_config.maritime_network, "maritime_network")
+    if network_config.port_network is not None:
+        validate_network_object(network_config.port_network, "port_network")
         
     # Prepare maritime network
     maritime_network = _prepare_maritime_network(network_config)
@@ -195,6 +204,9 @@ def calculate_sea_route_simple(
     
     if network_resolution is not None:
         network_resolution = validate_network_resolution(network_resolution)
+    
+    if restrictions is not None:
+        restrictions = validate_restrictions_list(restrictions)
     
     coords = RouteCoordinates(start=start, end=end)
     route_config = RouteConfig(units=units, restrictions=restrictions)

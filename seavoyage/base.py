@@ -11,8 +11,21 @@ from seavoyage.modules.restriction import CustomRestriction, get_custom_restrict
 from seavoyage.classes.m_network import MNetwork
 from seavoyage.utils.coordinates import decdeg_to_degmin
 from seavoyage.utils.route_utils import calculate_route_length
-from seavoyage.utils.validation import validate_coordinate_pair, validate_units, validate_speed
-from seavoyage.enhanced_api import units_map
+from seavoyage.utils.validation import (
+    validate_coordinate_pair, validate_units, validate_speed,
+    validate_restrictions_list, validate_network_object
+)
+
+units_map: Dict[str, Unit] = {
+    "km": Unit.KILOMETERS,
+    "m": Unit.METERS,
+    "mi": Unit.MILES,
+    "nm": Unit.NAUTICAL_MILES,
+    "ft": Unit.FEET,
+    "in": Unit.INCHES,
+    "rad": Unit.RADIANS,
+    "deg": Unit.DEGREES,
+}
 
 _DEFAULT_MNETWORK: Optional[MNetwork] = None
 
@@ -156,6 +169,14 @@ def seavoyage(
     end = validate_coordinate_pair(end, "end coordinate")
     units = validate_units(units)
     speed_knot = validate_speed(speed_knot, "speed_knot")
+    
+    if restrictions is not None:
+        restrictions = validate_restrictions_list(restrictions)
+    
+    if M is not None:
+        validate_network_object(M, "maritime network (M)")
+    if P is not None:
+        validate_network_object(P, "port network (P)")
     
     mnetwork: MNetwork = M or _get_default_network()
     mnetwork.reset_restrictions()  # Reset restriction zones

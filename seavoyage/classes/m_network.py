@@ -7,6 +7,8 @@ from shapely import LineString
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial import Delaunay
 from typing import Optional, Dict, List, Tuple, Any, Union
+from pathlib import Path
+import json
 
 from searoute import Marnet
 from searoute.utils import distance
@@ -370,11 +372,27 @@ class MNetwork(Marnet):
         logger.debug(f"Total {len(all_created_edges)} edges added")
         return all_created_edges
     
-    def to_geojson(self, file_path: Optional[str] = None) -> geojson.FeatureCollection:
-        """Export nodes and edges to GeoJSON format."""
+    def to_geojson(self, file_path: Optional[Union[str, Path]] = None) -> geojson.FeatureCollection:
+        """
+        Convert MNetwork to GeoJSON FeatureCollection.
+        
+        Args:
+            file_path (str, Path, optional): Path to save GeoJSON file. If None, only returns object.
+            
+        Returns:
+            geojson.FeatureCollection: GeoJSON representation of the network
+        """
         features = []
         
-        for u, v, attrs in self.edges(data=True):
+        # Convert nodes to Point features
+        for node in self.marnet.nodes():
+            point = geojson.Point((node[0], node[1]))
+            properties = self.marnet.nodes[node] if node in self.marnet.nodes else {}
+            feature = geojson.Feature(geometry=point, properties=properties)
+            features.append(feature)
+            
+        # Convert edges to LineString features  
+        for u, v, attrs in self.marnet.edges(data=True):
             line = geojson.LineString([[u[0], u[1]], [v[0], v[1]]])
             feature = geojson.Feature(geometry=line, properties=attrs)
             features.append(feature)
@@ -382,8 +400,18 @@ class MNetwork(Marnet):
         feature_collection = geojson.FeatureCollection(features)
         
         if file_path:
-            with open(file_path, "w") as f:
-                geojson.dump(feature_collection, f)
+            # Use pathlib for consistent file path handling
+            path = Path(file_path)
+            # Create parent directory if it doesn't exist
+            path.parent.mkdir(parents=True, exist_ok=True)
+            
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    geojson.dump(feature_collection, f, indent=2)
+                logger.info(f"Saved network to: {path}")
+            except (OSError, PermissionError) as e:
+                logger.error(f"Failed to save network to {path}: {e}")
+                raise
                 
         return feature_collection
     
@@ -395,23 +423,26 @@ class MNetwork(Marnet):
         return linestrings
     
     @classmethod
-    def from_geojson(cls, *args):
+    def from_geojson(cls, *args) -> 'MNetwork':
         """
-        Create MNetwork object from GeoJSON file path or GeoJSON object.
+        Create MNetwork from GeoJSON files/objects.
         
-        Parameters
-        ----------
-        *args : File path or GeoJSON object
-            - string: Interpreted as GeoJSON file path
-            - dict: Interpreted as GeoJSON object (dictionary)
-            - geojson.GeoJSON: Interpreted as GeoJSON object
-            
-        Returns
-        -------
-        MNetwork object
+        This is a factory method that creates a new MNetwork instance
+        and loads data from the provided GeoJSON sources.
+        
+        Args:
+            *args: GeoJSON file paths, dict objects, or geojson objects
+             
+        Returns:
+            MNetwork: Created network instance
+             
+        Raises:
+            FileNotFoundError: If file does not exist
+            ValueError: If GeoJSON is invalid
+            TypeError: If argument type is unsupported
         """
         mnetwork = cls()
-        mnetwork = mnetwork.load_from_geojson(*args)
+        mnetwork.load_from_geojson(*args)
         mnetwork.update_kdtree()
         return mnetwork
 
@@ -460,10 +491,24 @@ class MNetwork(Marnet):
         for arg in args:
             # 1) Load file path or object ---------------------------------
             if isinstance(arg, str):
-                if not os.path.exists(arg):
-                    raise FileNotFoundError(f"GeoJSON file not found: {arg}")
-                with open(arg, "r") as f:
-                    data = geojson.load(f)
+                # Use pathlib for consistent file handling
+                path = Path(arg)
+                if not path.exists():
+                    raise FileNotFoundError(f"GeoJSON file not found: {path}")
+                if not path.is_file():
+                    raise ValueError(f"Path is not a file: {path}")
+                    
+                # Validate file extension
+                if path.suffix.lower() not in ['.geojson', '.json']:
+                    logger.warning(f"File does not have .geojson extension: {path}")
+                
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = geojson.load(f)
+                except (OSError, PermissionError) as e:
+                    raise ValueError(f"Cannot read file {path}: {e}") from e
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Invalid JSON in file {path}: {e}") from e
             elif isinstance(arg, (dict, geojson.base.GeoJSON)):
                 data = arg
             else:
