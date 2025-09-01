@@ -1,24 +1,32 @@
 """
-경로 탐색 관련 예외 클래스 정의
+Route navigation related exception classes
 """
 
+from typing import Optional, List, Tuple
 from seavoyage.utils.coordinates import decdeg_to_degmin
 
 
 class RouteError(Exception):
-    """경로 탐색 관련 기본 예외 클래스"""
+    """Base exception class for route navigation errors"""
     pass
 
+
 class UnreachableDestinationError(RouteError):
-    """목적지에 도달할 수 없는 경우 발생하는 예외"""
+    """Exception raised when destination cannot be reached"""
     
-    def __init__(self, start: tuple, end: tuple, restriction_names=None, message=None):
+    def __init__(
+        self, 
+        start: Tuple[float, float], 
+        end: Tuple[float, float], 
+        restriction_names: Optional[List[str]] = None, 
+        message: Optional[str] = None
+    ):
         """
         Args:
-            start: 출발 좌표 (경도, 위도)
-            end: 목적지 좌표 (경도, 위도)
-            restriction_names: 적용된 제한 구역 이름 목록
-            message: 추가 메시지
+            start: Starting coordinates (longitude, latitude)
+            end: Destination coordinates (longitude, latitude)
+            restriction_names: List of applied restriction zone names
+            message: Additional message
         """
         self.start = start
         self.end = end
@@ -26,65 +34,108 @@ class UnreachableDestinationError(RouteError):
         
         if not message:
             if restriction_names:
-                message = f"제한 구역 {', '.join(restriction_names)}으로 인해 목적지 {end}에 도달할 수 없습니다."
+                message = f"Cannot reach destination {end} due to restriction zones: {', '.join(restriction_names)}"
             else:
-                message = f"목적지 {end}에 도달할 수 없습니다."
+                message = f"Cannot reach destination {end}"
                 
         super().__init__(message)
+
 
 class DestinationInRestrictionError(RouteError):
-    """목적지가 제한 구역 내에 있는 경우 발생하는 예외"""
+    """Exception raised when destination is within a restriction zone"""
     
-    def __init__(self, end: tuple, restriction_name: str, message=None):
+    def __init__(
+        self, 
+        end: Tuple[float, float], 
+        restriction_name: str, 
+        message: Optional[str] = None
+    ):
         """
         Args:
-            end: 목적지 좌표 (경도, 위도)
-            restriction_name: 제한 구역 이름
-            message: 추가 메시지
+            end: Destination coordinates (longitude, latitude)
+            restriction_name: Restriction zone name
+            message: Additional message
         """
         self.end = end
         self.restriction_name = restriction_name
         
         if not message:
-            message = f"목적지 {decdeg_to_degmin(end)}가 제한 구역 '{restriction_name}' 내에 있습니다."
+            message = f"Destination {decdeg_to_degmin(end)} is within restriction zone '{restriction_name}'"
             
         super().__init__(message)
 
+
 class StartInRestrictionError(RouteError):
-    """출발지가 제한 구역 내에 있는 경우 발생하는 예외"""
+    """Exception raised when starting point is within a restriction zone"""
     
-    def __init__(self, start: tuple, restriction_name: str, message=None):
+    def __init__(
+        self, 
+        start: Tuple[float, float], 
+        restriction_name: str, 
+        message: Optional[str] = None
+    ):
         """
         Args:
-            start: 출발 좌표 (경도, 위도)
-            restriction_name: 제한 구역 이름
-            message: 추가 메시지
+            start: Starting coordinates (longitude, latitude)
+            restriction_name: Restriction zone name
+            message: Additional message
         """
         self.start = start
         self.restriction_name = restriction_name
         
         if not message:
-            message = f"출발지 {decdeg_to_degmin(start)}가 제한 구역 '{restriction_name}' 내에 있습니다."
+            message = f"Starting point {decdeg_to_degmin(start)} is within restriction zone '{restriction_name}'"
             
-        super().__init__(message) 
+        super().__init__(message)
+
 
 class IsolatedOriginError(RouteError):
-    """출발지가 제한 구역에 의해 고립되어 이동할 수 없는 경우 발생하는 예외"""
+    """Exception raised when starting point is isolated and cannot move due to restriction zones"""
     
-    def __init__(self, start: tuple, restriction_names=None, message=None):
+    def __init__(
+        self, 
+        start: Tuple[float, float], 
+        restriction_names: Optional[List[str]] = None, 
+        message: Optional[str] = None
+    ):
         """
         Args:
-            start: 출발 좌표 (경도, 위도)
-            restriction_names: 적용된 제한 구역 이름 목록
-            message: 추가 메시지
+            start: Starting coordinates (longitude, latitude)
+            restriction_names: List of applied restriction zone names
+            message: Additional message
         """
         self.start = start
         self.restriction_names = restriction_names or []
         
         if not message:
             if restriction_names:
-                message = f"출발지 {start}가 제한 구역 {', '.join(restriction_names)}에 의해 고립되어 이동할 수 없습니다."
+                message = f"Starting point {start} is isolated by restriction zones: {', '.join(restriction_names)}"
             else:
-                message = f"출발지 {start}가 제한 구역에 의해 고립되어 이동할 수 없습니다."
+                message = f"Starting point {start} is isolated by restriction zones"
                 
-        super().__init__(message) 
+        super().__init__(message)
+
+
+class SeavoyageError(Exception):
+    """Base exception for seavoyage package"""
+    pass
+
+
+class InvalidCoordinatesError(SeavoyageError):
+    """Exception raised when coordinates are invalid"""
+    pass
+
+
+class RouteNotFoundError(SeavoyageError):
+    """Exception raised when no route can be found"""
+    pass
+
+
+class NetworkError(SeavoyageError):
+    """Exception raised for network-related errors"""
+    pass
+
+
+class RestrictionError(SeavoyageError):
+    """Exception raised for restriction zone errors"""
+    pass

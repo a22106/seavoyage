@@ -20,77 +20,264 @@ pip install seavoyage
 ```
 
 ## 개발 모드 설치
-개발 중에 테스트를 쉽게 실행하려면 다음 명령으로 패키지를 개발 모드로 설치하세요:
+
+이 프로젝트는 **uv**를 사용한 현대적인 Python 패키지 관리를 권장합니다:
 
 ```bash
+# uv를 사용한 개발 환경 설정 (권장)
+uv sync
+uv pip install -e .
+
+# 또는 기존 pip 방식
 pip install -e .
 ```
 
-이렇게 하면 `pytest.ps1` 스크립트를 사용하지 않고도 바로 `pytest` 명령을 실행할 수 있습니다.
+### 개발 의존성 설치
+```bash
+# uv 사용 (권장)
+uv sync --group dev --group test --group lint
+
+# 또는 pip 사용
+pip install -e ".[dev]"
+```
 
 ## 빠른 시작
 
-### 1. 기본 경로 생성
+### 1. 가장 간단한 사용법 (새로운 API)
 ```python
 import seavoyage as sv
 
 # 출발지와 도착지 좌표 (경도, 위도)
-start = (129.17, 35.075)
-end = (-4.158, 44.644)
+start = (129.17, 35.075)  # 부산
+end = (4.158, 51.921)     # 로테르담
 
-# 기본 해상 네트워크에서 최적 경로 탐색
+# 빠른 경로 정보 얻기
+info = sv.get_quick_route(start, end)
+print(f"거리: {info['distance_nm']:.1f} 해리 ({info['distance_km']:.1f} km)")
+print(f"예상 시간: {info['duration_hours']:.1f} 시간")
+```
+
+### 2. 간단한 API 사용 (새로운 API)
+```python
+# 제한구역과 네트워크 해상도를 지정하여 경로 계산
+route = sv.calculate_sea_route_simple(
+    start=(129.17, 35.075),
+    end=(-73.949, 40.650),  # 뉴욕
+    restrictions=["suez", "panama"],
+    network_resolution="20km",
+    units="km"
+)
+print(f"거리: {route.properties.length:.1f} km")
+```
+
+### 3. 고급 설정 사용 (새로운 API)
+```python
+# 설정 객체를 사용한 세밀한 제어
+coords = sv.RouteCoordinates(
+    start=(103.822, 1.264),  # 싱가포르
+    end=(23.708, 37.945)     # 아테네
+)
+
+route_config = sv.RouteConfig(
+    units="nm",
+    speed_knot=15,
+    restrictions=["suez"],
+    return_passages=True
+)
+
+network_config = sv.NetworkConfig(resolution="10km")
+
+route = sv.calculate_sea_route(coords, route_config, network_config)
+print(f"거리: {route.properties.length:.1f} 해리")
+```
+
+### 4. 기존 API 사용 (하위 호환성)
+```python
+# 기존 방식도 계속 사용 가능
 route = sv.seavoyage(start, end)
 print("경로 길이:", route["properties"]["length"], "km")
 print("예상 소요 시간:", route["properties"]["duration_hours"], "시간")
 ```
 
-### 2. 커스텀 제한구역(해역) 적용
+### 5. 커스텀 제한구역(해역) 적용
 ```python
 # 제한구역 GeoJSON 파일 등록 (예: 'jwc.geojson')
 sv.register_custom_restriction('jwc', '/path/to/jwc.geojson')
 
-# 제한구역을 적용하여 경로 탐색
-route = sv.seavoyage(start, end, restrictions=['jwc'])
-print("제한구역 적용 후 경로 길이:", route["properties"]["length"], "km")
+# 새로운 API로 제한구역 적용
+route = sv.calculate_sea_route_simple(
+    start=start,
+    end=end,
+    restrictions=['jwc', 'suez'],
+    units="km"
+)
+print(f"제한구역 적용 후 거리: {route.properties.length:.1f} km")
+
+# 기존 API도 사용 가능
+route_dict = sv.seavoyage(start, end, restrictions=['jwc'])
+print("제한구역 적용 후 경로 길이:", route_dict["properties"]["length"], "km")
 ```
 
-### 3. 다양한 해상 네트워크 해상도 사용
-#### 3.1 미리 설정된 해상 네트워크 사용
+### 6. 다양한 해상 네트워크 해상도 사용
+#### 6.1 새로운 API로 간단하게 해상도 지정
+```python
+# 해상도를 문자열로 간단히 지정
+route = sv.calculate_sea_route_simple(
+    start=start,
+    end=end,
+    network_resolution="10km"  # "5km", "10km", "20km", "50km", "100km"
+)
+```
+
+#### 6.2 기존 방식: 네트워크 객체 직접 사용
 ```python
 # 5km, 10km, 20km, 50km, 100km 네트워크 지원
 mnet_5km = sv.get_m_network_5km()
 route = sv.seavoyage(start, end, M=mnet_5km)
 ```
 
-#### 3.2 사용자 정의 해상 네트워크 사용
+#### 6.3 사용자 정의 해상 네트워크 사용
 ```python
 # 사용자 정의 해상 네트워크 생성
 mnet = sv.MNetwork().from_geojson('/path/to/mnet.geojson')
-route = sv.seavoyage(start, end, M=mnet)
+
+# 새로운 API 사용
+network_config = sv.NetworkConfig(maritime_network=mnet)
+route = sv.calculate_sea_route(coords, network_config=network_config)
+
+# 기존 API 사용
+route_dict = sv.seavoyage(start, end, M=mnet)
 ```
 
-### 4. folium 기반 지도 시각화
+### 7. folium 기반 지도 시각화
 ```python
 from seavoyage.utils import map_folium
 
-# folium 지도 객체로 변환
-m = map_folium(route)
+# 새로운 API의 RouteResult를 dictionary로 변환
+route_dict = route.to_dict()
+m = map_folium(route_dict)
+m.save("route_map.html")
+
+# 또는 기존 API의 결과를 직접 사용
+route_dict = sv.seavoyage(start, end)
+m = map_folium(route_dict)
 m.save("route_map.html")
 ```
 
+### 8. 진행 상황 표시 (새로운 기능)
+```python
+# 8.1 간단한 진행 상황 표시
+from seavoyage import SimpleProgressCallback
+
+route = sv.seavoyage_with_progress(
+    start, end,
+    progress_callback=SimpleProgressCallback(verbose=True)
+)
+
+# 8.2 커스텀 진행 상황 처리
+def my_progress_handler(info):
+    print(f"[{info.stage.value}] {info.percent:.1f}% - {info.message}")
+
+route = sv.seavoyage_with_progress(
+    start, end,
+    progress_callback=my_progress_handler
+)
+
+# 8.3 새로운 API와 함께 사용
+config = sv.RouteConfig(
+    progress_callback=SimpleProgressCallback(),
+    units="km"
+)
+route = sv.calculate_sea_route_with_recovery(coords, config)
+```
+
+### 9. 에러 복구 및 재시도 (새로운 기능)
+```python
+# 9.1 자동 재시도 활성화
+config = sv.RouteConfig(
+    enable_retry=True,
+    max_retry_attempts=3,
+    retry_delay=1.0  # 초 단위
+)
+
+route = sv.calculate_sea_route_with_recovery(coords, config)
+
+# 9.2 진행 상황과 재시도를 함께 사용
+def progress_with_retry_info(info):
+    if "Retry" in info.message:
+        print(f"⚠️  {info.message}")
+    else:
+        print(f"📍 {info.message}")
+
+config = sv.RouteConfig(
+    progress_callback=progress_with_retry_info,
+    enable_retry=True,
+    max_retry_attempts=5
+)
+
+route = sv.calculate_sea_route_with_recovery(coords, config)
+
+# 9.3 고급 재시도 설정
+from seavoyage import RetryConfig, RetryStrategy
+
+retry_config = sv.RetryConfig(
+    max_attempts=3,
+    initial_delay=1.0,
+    max_delay=30.0,
+    strategy=RetryStrategy.EXPONENTIAL_BACKOFF,
+    backoff_factor=2.0
+)
+
+route = sv.seavoyage_with_progress(
+    start, end,
+    enable_retry=True,
+    retry_config=retry_config,
+    progress_callback=SimpleProgressCallback()
+)
+```
+
 ## 주요 API
+
+### 새로운 간편 API (권장)
+- `get_quick_route(start, end)`
+  : 가장 간단한 경로 정보 조회 (거리, 시간, 경유점 수)
+- `calculate_sea_route_simple(start, end, restrictions=None, network_resolution=None, units="nm")`
+  : 간단한 매개변수로 경로 계산
+- `calculate_sea_route(coordinates, route_config=None, network_config=None)`
+  : 설정 객체를 사용한 고급 경로 계산
+
+### 향상된 API (진행 상황 및 에러 복구)
+- `seavoyage_with_progress(start, end, ..., progress_callback=None, enable_retry=True)`
+  : 진행 상황 추적과 자동 재시도가 포함된 경로 계산
+- `calculate_sea_route_with_recovery(coordinates, route_config=None, network_config=None)`
+  : 에러 복구 메커니즘이 통합된 고급 경로 계산
+
+### 데이터 모델 클래스
+- `RouteCoordinates`: 출발지/도착지 좌표
+- `RouteConfig`: 경로 계산 설정 (단위, 속도, 제한구역, 진행 상황 콜백, 재시도 설정 등)
+- `NetworkConfig`: 네트워크 설정 (해상도, 커스텀 네트워크 등)
+- `RouteResult`: 경로 계산 결과 (거리, 시간, 경로 좌표 등)
+
+### 진행 상황 및 재시도 클래스
+- `ProgressCallback`: 진행 상황 콜백 인터페이스
+- `SimpleProgressCallback`: 콘솔 출력 진행 상황 표시
+- `FunctionProgressCallback`: 사용자 정의 함수 콜백
+- `RetryConfig`: 재시도 동작 설정
+- `RetryStrategy`: 재시도 전략 (IMMEDIATE, LINEAR_BACKOFF, EXPONENTIAL_BACKOFF)
+
+### 기존 API (하위 호환성)
 - `seavoyage(start, end, restrictions=None, M=None, ...)`
-: 최적 경로 탐색 (제한구역, 네트워크 해상도 등 옵션 지원)
+  : 최적 경로 탐색 (제한구역, 네트워크 해상도 등 옵션 지원)
 - `MNetwork`
-: 해상 네트워크 객체 (노드/엣지 추가, GeoJSON 변환 등 지원)
+  : 해상 네트워크 객체 (노드/엣지 추가, GeoJSON 변환 등 지원)
 - `register_custom_restriction(name, geojson_file_path)`
-: 커스텀 제한구역 등록
+  : 커스텀 제한구역 등록
 - `list_custom_restrictions()`
-: 등록된 제한구역 이름 목록 반환
+  : 등록된 제한구역 이름 목록 반환
 - `get_custom_restriction(name)`
-: 제한구역 객체 반환
+  : 제한구역 객체 반환
 - `map_folium(data, ...)`
-: folium 기반 지도 시각화
+  : folium 기반 지도 시각화
 
 ## 라이선스
 이 프로젝트는 Apache License 2.0 라이선스 하에 배포됩니다.
@@ -122,26 +309,32 @@ limitations under the License.
 ## 개선 과제 및 문제점
 
 ### 1. 패키지 설정 및 구조 개선
-- [ ] **Python 버전 지원 불일치**: `pyproject.toml`에서 `requires-python = ">=3.11"`로 설정되어 있으나, classifiers에는 Python 3.9, 3.10도 포함되어 있음. 실제 지원 버전 확인 및 일치 필요
-- [ ] **개발 의존성 분리 부족**: `requirements.txt`와 `pyproject.toml`에 개발/테스트용 패키지(pytest, ruff, sphinx 등)가 일반 의존성으로 포함됨. `dev-dependencies` 또는 `extras_require` 사용 권장
-- [ ] **패키지 메타데이터 보완**: `pyproject.toml`에 maintainers, repository, documentation URL 등 추가 정보 필요
+- [x] **Python 버전 지원 불일치**: `pyproject.toml`에서 `requires-python = ">=3.11"`로 설정되어 있으나, classifiers에는 Python 3.9, 3.10도 포함되어 있음. 실제 지원 버전 확인 및 일치 필요
+- [x] **개발 의존성 분리 부족**: `requirements.txt`와 `pyproject.toml`에 개발/테스트용 패키지(pytest, ruff, sphinx 등)가 일반 의존성으로 포함됨. `dev-dependencies` 또는 `extras_require` 사용 권장
+- [x] **패키지 메타데이터 보완**: `pyproject.toml`에 maintainers, repository, documentation URL 등 추가 정보 필요
 
 ### 2. 코드 품질 및 아키텍처
-- [ ] **타입 힌트 일관성**: 일부 함수에만 타입 힌트가 적용됨. 전체 코드베이스에 일관된 타입 힌트 적용 필요
-- [ ] **에러 메시지 국제화**: 예외 메시지가 한글로 하드코딩됨. i18n 지원 또는 영어 메시지로 통일 필요
-- [ ] **전역 상태 관리**: `_DEFAULT_MNETWORK` 같은 전역 변수 사용. 의존성 주입 패턴 고려
-- [ ] **로깅 레벨 관리**: 로깅 설정이 분산되어 있음. 중앙화된 로깅 설정 필요
+- [x] **타입 힌트 일관성**: 일부 함수에만 타입 힌트가 적용됨. 전체 코드베이스에 일관된 타입 힌트 적용 필요
+- [x] **에러 메시지 국제화**: 예외 메시지가 한글로 하드코딩됨. 영어 메시지로 통일 필요
+- [x] **전역 상태 관리**: `_DEFAULT_MNETWORK` 같은 전역 변수 사용. 의존성 주입 패턴 고려
+- [x] **로깅 레벨 관리**: 로깅 설정이 분산되어 있음. 중앙화된 로깅 설정 필요
 
 ### 3. API 설계 개선
-- [ ] **함수 시그니처 복잡도**: `seavoyage()` 함수가 너무 많은 매개변수를 가짐. 설정 객체나 빌더 패턴 고려
-- [ ] **일관성 없는 네이밍**: `M`, `P` 같은 단일 문자 매개변수명. 더 명확한 이름 사용 필요
-- [ ] **반환 타입 명확화**: 함수들이 dict를 반환하는데, 구체적인 타입 정의나 dataclass 사용 권장
+- [x] **함수 시그니처 복잡도**: `seavoyage()` 함수가 너무 많은 매개변수를 가짐. 설정 객체나 빌더 패턴 고려
+  - RouteConfig, NetworkConfig 등 설정 객체 도입
+  - calculate_sea_route(), calculate_sea_route_simple(), get_quick_route() 등 단순화된 API 추가
+- [x] **일관성 없는 네이밍**: `M`, `P` 같은 단일 문자 매개변수명. 더 명확한 이름 사용 필요
+  - 새 API에서 maritime_network, port_network 등 명확한 이름 사용
+  - 기존 API는 하위 호환성을 위해 유지
+- [x] **반환 타입 명확화**: 함수들이 dict를 반환하는데, 구체적인 타입 정의나 dataclass 사용 권장
+  - RouteResult, RouteProperties, RouteGeometry 등 dataclass 정의
+  - to_dict(), from_dict() 메서드로 기존 형식과 호환
 
 ### 4. 테스트 및 문서화
-- [ ] **테스트 커버리지**: 테스트 커버리지 측정 및 리포트 도구 부재
-- [ ] **통합 테스트 부족**: 단위 테스트는 있으나 end-to-end 시나리오 테스트 필요
-- [ ] **API 문서화**: Sphinx 설정은 있으나 실제 API 문서가 부족함. docstring 표준화 필요
-- [ ] **예제 코드 검증**: README의 예제 코드가 실제로 작동하는지 자동 검증 필요
+- [x] **테스트 커버리지**: 테스트 커버리지 측정 및 리포트 도구 부재
+- [x] **통합 테스트 부족**: 단위 테스트는 있으나 end-to-end 시나리오 테스트 필요
+- [x] **API 문서화**: Sphinx 설정은 있으나 실제 API 문서가 부족함. docstring 표준화 필요
+- [x] **예제 코드 검증**: README의 예제 코드가 실제로 작동하는지 자동 검증 필요
 
 ### 5. 성능 및 최적화
 - [ ] **대용량 데이터 처리**: shapefile 등 대용량 지리 데이터를 패키지에 포함. 선택적 다운로드나 캐싱 전략 필요
@@ -149,14 +342,29 @@ limitations under the License.
 - [ ] **메모리 사용량**: 전체 해상 네트워크를 메모리에 로드. 필요한 부분만 로드하는 최적화 고려
 
 ### 6. 사용자 경험 개선
-- [ ] **진행 상황 표시**: 긴 경로 계산 시 진행 상황을 표시하는 기능 부재
-- [ ] **에러 복구**: 네트워크 오류나 부분적 실패 시 복구 메커니즘 부족
-- [ ] **CLI 인터페이스**: 프로그래밍 API만 제공. 간단한 CLI 도구 추가 고려
+- [x] **진행 상황 표시**: 긴 경로 계산 시 진행 상황을 표시하는 기능 부재
+  - ProgressCallback 시스템 구현 완료
+  - SimpleProgressCallback, FunctionProgressCallback 제공
+  - 모든 주요 계산 단계에 대한 상세 진행 상황 추적
+- [x] **에러 복구**: 네트워크 오류나 부분적 실패 시 복구 메커니즘 부족
+  - RetryHandler로 자동 재시도 메커니즘 구현
+  - 지수 백오프, 선형 백오프, 즉시 재시도 전략 지원
+  - ErrorRecoveryHandler로 종합적인 에러 복구 제공
+  - 설정 가능한 재시도 횟수 및 지연 시간
 
 ### 7. 보안 및 유효성 검사
-- [ ] **입력 검증 강화**: 좌표 범위 검증, GeoJSON 파일 검증 등 입력 유효성 검사 보강 필요
-- [ ] **파일 경로 처리**: 절대/상대 경로 처리가 일관되지 않음. pathlib 사용 권장
-- [ ] **의존성 보안**: 의존성 패키지의 보안 취약점 스캔 자동화 필요
+- [x] **입력 검증 강화**: 좌표 범위 검증, GeoJSON 파일 검증 등 입력 유효성 검사 보강 완료
+  - 좌표, 제한구역, 네트워크 객체, 포트 매개변수 등 종합적 validation 구현
+  - 파일 경로 보안 검증 및 path traversal 방지
+  - Shapely를 이용한 기하학적 유효성 검사
+- [x] **파일 경로 처리**: 절대/상대 경로 처리가 일관되지 않음. pathlib 사용 권장
+  - 모든 파일 처리 함수에서 pathlib 일관성 적용 완료
+  - 파일 존재 및 권한 검증 강화
+  - 보안 취약점이 있는 하드코딩된 경로 제거
+- [x] **의존성 보안**: 의존성 패키지의 보안 취약점 스캔 자동화 완료
+  - GitHub Actions workflow로 자동 보안 스캔 구현
+  - safety, pip-audit, bandit 등 종합 보안 도구 활용
+  - 일일 스케줄링 및 PR/push 시 자동 실행
 
 ### 8. 배포 및 CI/CD
 - [ ] **GitHub Actions 설정**: 자동 테스트, 린팅, 패키지 빌드 파이프라인 구축

@@ -1,15 +1,17 @@
 import os
 import json
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Dict, List, Tuple, Union
 from shapely.geometry import Polygon, MultiPolygon, Point
 
 from seavoyage.log import logger
+from seavoyage.utils.validation import validate_geojson_file, validate_restriction_zone
 
-# 전역 제한 구역 저장소
-_CUSTOM_RESTRICTION_REGISTRY = {}
+# Global custom restriction registry
+_CUSTOM_RESTRICTION_REGISTRY: Dict[str, 'CustomRestriction'] = {}
 
 class CustomRestriction:
-    """커스텀 제한 구역을 정의하는 클래스"""
+    """Class defining custom restriction zones"""
     
     def __init__(self, name: str, polygon):
         """
@@ -24,21 +26,21 @@ class CustomRestriction:
         if isinstance(polygon, (Polygon, MultiPolygon)):
             self.polygon = polygon
         else:
-            raise TypeError("polygon은 Shapely Polygon 또는 MultiPolygon 타입이어야 합니다.")
+            raise TypeError("polygon must be a Shapely Polygon or MultiPolygon type")
     
-    def contains_point(self, point: tuple) -> bool:
+    def contains_point(self, point: Tuple[float, float]) -> bool:
         """
-        주어진 점이 제한 구역 내에 있는지 확인합니다.
+        Check if the given point is within the restriction zone.
         
         Args:
-            point: (경도, 위도) 좌표
+            point: (longitude, latitude) coordinates
             
         Returns:
-            bool: 점이 제한 구역 내에 있으면 True, 아니면 False
+            bool: True if point is within restriction zone, False otherwise
         """
-        # 좌표를 Point 객체로 변환
+        # Convert coordinates to Point object
         shapely_point = Point(point)
-        # 폴리곤에 포함되는지 확인
+        # Check if polygon contains the point
         return self.polygon.contains(shapely_point)
         
     @classmethod
@@ -54,7 +56,7 @@ class CustomRestriction:
             CustomRestriction: 생성된 CustomRestriction 객체
         """
         if 'type' not in geojson_data:
-            raise ValueError("유효하지 않은 GeoJSON 형식입니다.")
+            raise ValueError("Invalid GeoJSON format")
             
         if geojson_data['type'] == 'FeatureCollection':
             # 여러 Feature를 하나의 MultiPolygon으로 병합
@@ -68,7 +70,7 @@ class CustomRestriction:
                         polygons.append(Polygon(poly_coords[0], holes=poly_coords[1:] if len(poly_coords) > 1 else None))
             
             if not polygons:
-                raise ValueError("GeoJSON에 Polygon 또는 MultiPolygon이 없습니다.")
+                raise ValueError("No Polygon or MultiPolygon found in GeoJSON")
                 
             if len(polygons) == 1:
                 return cls(name, polygons[0])
@@ -85,68 +87,80 @@ class CustomRestriction:
                     polygons.append(Polygon(poly_coords[0], holes=poly_coords[1:] if len(poly_coords) > 1 else None))
                 return cls(name, MultiPolygon(polygons))
             else:
-                raise ValueError("Feature는 Polygon 또는 MultiPolygon 타입이어야 합니다.")
+                raise ValueError("Feature must be of type Polygon or MultiPolygon")
         else:
-            raise ValueError("지원되지 않는 GeoJSON 타입입니다. FeatureCollection 또는 Feature가 필요합니다.")
+            raise ValueError("Unsupported GeoJSON type. FeatureCollection or Feature required")
 
     @classmethod
-    def from_geojson_file(cls, name: str, file_path: str) -> 'CustomRestriction':
+    def from_geojson_file(cls, name: str, file_path: Union[str, Path]) -> 'CustomRestriction':
         """
         GeoJSON 파일에서 CustomRestriction 생성
         
         Args:
             name (str): 제한 구역 이름
-            file_path (str): GeoJSON 파일 경로
+            file_path (str or Path): GeoJSON 파일 경로
             
         Returns:
             CustomRestriction: 생성된 CustomRestriction 객체
         """
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"파일을 찾을 수 없습니다: {file_path}")
-            
-        with open(file_path, 'r', encoding='utf-8') as f:
-            geojson_data = json.load(f)
+        # Validate and load GeoJSON file
+        geojson_data = validate_geojson_file(file_path)
+        
+        # Validate it's a proper restriction zone
+        validate_restriction_zone(geojson_data)
             
         return cls.from_geojson(name, geojson_data)
 
 
-def register_custom_restriction(name: str, geojson_file_path: str):
+def register_custom_restriction(name: str, geojson_file_path: Union[str, Path]) -> CustomRestriction:
     """
-    커스텀 제한 구역을 등록합니다.
+    Register a custom restriction zone.
     
     Args:
-        name (str): 제한 구역 이름
-        geojson_file_path (str): GeoJSON 파일 경로
+        name (str): Restriction zone name
+        geojson_file_path (str or Path): GeoJSON file path
+    
+    Returns:
+        CustomRestriction: The registered restriction object
     """
-    restriction = CustomRestriction.from_geojson_file(name, geojson_file_path)
+    # Convert to Path for consistent handling
+    file_path = Path(geojson_file_path)
+    
+    restriction = CustomRestriction.from_geojson_file(name, file_path)
     _CUSTOM_RESTRICTION_REGISTRY[name] = restriction
-    logger.debug(f"제한 구역 등록 성공: {name}, 파일: {geojson_file_path}")
+    logger.debug(f"Restriction zone registered successfully: {name}, file: {file_path}")
     return restriction
 
 def get_custom_restriction(name: str) -> Optional[CustomRestriction]:
     """
-    이름으로 등록된 커스텀 제한 구역을 가져옵니다.
+    Get a registered custom restriction zone by name.
     
     Args:
-        name (str): 제한 구역 이름
+        name (str): Restriction zone name
         
     Returns:
-        Optional[CustomRestriction]: 제한 구역 객체 또는 None
+        Optional[CustomRestriction]: Restriction zone object or None
     """
     return _CUSTOM_RESTRICTION_REGISTRY.get(name)
 
-def list_custom_restrictions():
+def list_custom_restrictions() -> List[str]:
     """
-    등록된 모든 커스텀 제한 구역 이름을 반환합니다.
+    Return all registered custom restriction zone names.
     
     Returns:
-        List[str]: 등록된 제한 구역 이름 목록
+        List[str]: List of registered restriction zone names
     """
     return list(_CUSTOM_RESTRICTION_REGISTRY.keys())
 
-def reset_custom_restrictions():
+def reset_custom_restrictions() -> None:
     """
-    모든 커스텀 제한 구역을 초기화합니다.
+    Reset all custom restriction zones.
     """
     _CUSTOM_RESTRICTION_REGISTRY.clear()
+
+def clear_custom_restrictions() -> None:
+    """
+    Clear all custom restriction zones (alias for reset_custom_restrictions).
+    """
+    reset_custom_restrictions()
 

@@ -16,6 +16,21 @@ from .marine_network import (
 from .route_utils import *
 from .shapely_utils import *
 from .shoreline import *
+from .validation import (
+    validate_coordinates,
+    validate_coordinate_pair,
+    validate_geojson_structure,
+    validate_geojson_geometry,
+    validate_geojson_file,
+    validate_restriction_zone,
+    validate_network_resolution,
+    validate_speed,
+    validate_units,
+    validate_restrictions_list,
+    validate_port_params,
+    validate_network_object,
+    validate_file_path_security
+)
 
 
 __all__ = (
@@ -42,7 +57,7 @@ __all__ = (
         "make_searoute_nodes",
         "get_additional_points",
         "make_searoute_edges",
-        "create_geojson_from_marnet",
+        "marnet_to_geojson",
         "calculate_route_length"
     ]
     # shapely_utils
@@ -56,5 +71,21 @@ __all__ = (
     + [
         "ShorelineLevel",
         "shoreline",
+    ]
+    # validation
+    + [
+        "validate_coordinates",
+        "validate_coordinate_pair",
+        "validate_geojson_structure",
+        "validate_geojson_geometry",
+        "validate_geojson_file",
+        "validate_restriction_zone",
+        "validate_network_resolution",
+        "validate_speed",
+        "validate_units",
+        "validate_restrictions_list",
+        "validate_port_params",
+        "validate_network_object",
+        "validate_file_path_security"
     ]
 )

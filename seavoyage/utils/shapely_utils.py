@@ -1,4 +1,6 @@
 # seavoyage/utils/shapely_utils.py
+from pathlib import Path
+from typing import Union
 import numpy as np
 from shapely import LineString
 import geojson
@@ -18,9 +20,10 @@ def extract_linestrings_from_geojson(geojson_feature_collection: geojson.GeoJSON
     return linestrings
 
 # geojson 파일에서 LineString 리스트 추출
-def extract_linestrings_from_geojson_file(geojson_path: str) -> np.ndarray[LineString]:
+def extract_linestrings_from_geojson_file(geojson_path: Union[str, Path]) -> np.ndarray[LineString]:
     # geojson 파일 읽기
-    with open(geojson_path) as f:
+    path = Path(geojson_path)
+    with open(path, 'r', encoding='utf-8') as f:
         data = geojson.load(f)
     
     linestrings = extract_linestrings_from_geojson(data)
